@@ -1,5 +1,5 @@
 """Who may call what: sign-in is required everywhere but a few public routes, and
-/tickets is for employees only, /admin for Facility Admins only."""
+/tickets is for employees only, /admin for Facility Admins only, /engineer for engineers only."""
 
 import pytest
 
@@ -44,6 +44,14 @@ ADMIN_ONLY = [
     ("PUT", "/admin/users/{user_id}/role", {"role": "engineer"}),
 ]
 
+ENGINEER_ONLY = [
+    ("GET", "/engineer/tickets", None),
+    ("GET", "/engineer/tickets/{ticket_id}", None),
+    ("GET", "/engineer/tickets/{ticket_id}/history", None),
+    ("GET", "/engineer/tickets/{ticket_id}/notes", None),
+    ("POST", "/engineer/tickets/{ticket_id}/notes", {"note_text": "hello"}),
+]
+
 
 def _url(path: str, ticket_id: int = 1) -> str:
     return API_PREFIX + (
@@ -58,6 +66,7 @@ def test_the_public_list_matches_real_routes() -> None:
     assert PUBLIC <= set(ALL_ROUTES)
     assert {(m, p) for m, p, _ in EMPLOYEE_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/tickets")}
     assert {(m, p) for m, p, _ in ADMIN_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/admin")}
+    assert {(m, p) for m, p, _ in ENGINEER_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/engineer")}
 
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
@@ -84,6 +93,19 @@ def test_ticket_routes_are_employee_only(
 @pytest.mark.parametrize("role", ["employee", "engineer"])
 @pytest.mark.parametrize(("method", "path", "body"), ADMIN_ONLY)
 def test_admin_routes_are_admin_only(
+    client, user_with_role, create_ticket, jane, role, method, path, body
+) -> None:
+    ticket = create_ticket(jane)
+    response = client.request(
+        method, _url(path, ticket["ticket_id"]), json=body, headers=bearer(user_with_role(role))
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": ACCESS_DENIED}
+
+
+@pytest.mark.parametrize("role", ["employee", "admin"])
+@pytest.mark.parametrize(("method", "path", "body"), ENGINEER_ONLY)
+def test_engineer_routes_are_engineer_only(
     client, user_with_role, create_ticket, jane, role, method, path, body
 ) -> None:
     ticket = create_ticket(jane)

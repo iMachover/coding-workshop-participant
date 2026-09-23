@@ -5,8 +5,8 @@ import { sql } from './db.js'
 export const PASSWORD = 'e2e-password-123'
 
 /**
- * Give a user a role directly in the e2e database. Stand-in for an admin promoting
- * them: no API can change roles yet.
+ * Give a user a role directly in the e2e database, for test setup. Quicker than the admin
+ * API, and the only way to make an admin.
  * @param {number} userId
  * @param {'employee'|'engineer'|'admin'} role
  */
@@ -28,6 +28,23 @@ export async function registerViaApi(request, { name = 'E2E Employee', email = u
   })
   expect(response.status()).toBe(201)
   return response.json()
+}
+
+/**
+ * Register an engineer. The role is set in SQL: quicker than the admin API for test setup.
+ * @param {string} name full name; make it unique if a test picks it from a dropdown
+ */
+export async function registerEngineer(request, name) {
+  const engineer = await registerViaApi(request, { name, email: uniqueEmail('engineer') })
+  setRole(engineer.user_id, 'engineer')
+  return engineer
+}
+
+/** Register a Facility Admin (role set in SQL, since only SQL can make admins). */
+export async function registerAdmin(request) {
+  const admin = await registerViaApi(request, { name: 'Ada Admin', email: uniqueEmail('admin') })
+  setRole(admin.user_id, 'admin')
+  return admin
 }
 
 /** Sign in through the API and return the Authorization header for that user. */

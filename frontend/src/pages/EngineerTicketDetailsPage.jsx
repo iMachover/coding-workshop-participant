@@ -7,38 +7,41 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Link as RouterLink, useParams } from 'react-router'
 
-import TicketAssignment from '../components/admin/TicketAssignment'
 import BackLink from '../components/BackLink'
 import ErrorState from '../components/ErrorState'
 import Panel from '../components/Panel'
-import NoteList from '../components/tickets/NoteList'
 import RequesterContact from '../components/tickets/RequesterContact'
 import StaffTicketSummary from '../components/tickets/StaffTicketSummary'
 import StatusHistory from '../components/tickets/StatusHistory'
 import TicketFacts from '../components/tickets/TicketFacts'
+import TicketNotes from '../components/tickets/TicketNotes'
 import TicketWorkflow from '../components/tickets/TicketWorkflow'
 import useApiData from '../hooks/useApiData'
-import { getTicket, listTicketHistory, listTicketNotes } from '../services/adminTicketService'
-import { listEngineers } from '../services/adminUserService'
+import {
+  addAssignedTicketNote,
+  getAssignedTicket,
+  listAssignedTicketHistory,
+  listAssignedTicketNotes,
+} from '../services/engineerTicketService'
 
-function BackToAdminDashboard() {
-  return <BackLink to="/admin">Back to admin dashboard</BackLink>
+function BackToQueue() {
+  return <BackLink to="/engineer">Back to my queue</BackLink>
 }
 
 function NotFound() {
   return (
     <Stack spacing={2}>
-      <BackToAdminDashboard />
+      <BackToQueue />
       <Card>
         <CardContent>
           <Typography variant="h4" component="h1" gutterBottom>
             Ticket not found
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            There&apos;s no ticket with this number.
+            It may not exist, or it isn&apos;t assigned to you (it may have been reassigned).
           </Typography>
-          <Button variant="contained" component={RouterLink} to="/admin">
-            Go to the admin dashboard
+          <Button variant="contained" component={RouterLink} to="/engineer">
+            Go to my queue
           </Button>
         </CardContent>
       </Card>
@@ -47,23 +50,22 @@ function NotFound() {
 }
 
 /**
- * Any ticket, as a Facility Admin sees it: priority, where it is in the workflow and how
- * it got there, its details, who owns it (and assigning it), who reported it and how to
- * reach them, and every note. Closing comes in a later slice.
+ * One of the engineer's tickets: priority, where it is in the workflow and how it got
+ * there, its details, how to reach the requester, and the notes conversation (they can
+ * add to it until the ticket is closed). Status controls come in E2.
  */
-function AdminTicketDetailsPage() {
+function EngineerTicketDetailsPage() {
   const { ticketId } = useParams()
   const validId = /^[1-9]\d{0,9}$/.test(ticketId)
-  const ticket = useApiData(getTicket, { ticketId }, { skip: !validId })
-  const history = useApiData(listTicketHistory, { ticketId }, { skip: !validId })
-  const notes = useApiData(listTicketNotes, { ticketId }, { skip: !validId })
-  const engineers = useApiData(listEngineers, {}, { skip: !validId })
+  const ticket = useApiData(getAssignedTicket, { ticketId }, { skip: !validId })
+  const history = useApiData(listAssignedTicketHistory, { ticketId }, { skip: !validId })
+  const notes = useApiData(listAssignedTicketNotes, { ticketId }, { skip: !validId })
 
   if (!validId || ticket.error?.status === 404) return <NotFound />
   if (ticket.error) {
     return (
       <Stack spacing={2}>
-        <BackToAdminDashboard />
+        <BackToQueue />
         <ErrorState message={ticket.error.message} onRetry={ticket.reload} />
       </Stack>
     )
@@ -79,15 +81,15 @@ function AdminTicketDetailsPage() {
   }
 
   const t = ticket.data
-  // The new engineer and dates show in the facts, and the engineers' loads have changed.
+  // A new note moves the ticket's updated_at, which the facts show.
   const refresh = () => {
     ticket.reload()
-    engineers.reload()
+    notes.reload()
   }
 
   return (
     <Stack spacing={3}>
-      <BackToAdminDashboard />
+      <BackToQueue />
       <StaffTicketSummary ticket={t} />
 
       <Panel title="Progress">
@@ -102,14 +104,9 @@ function AdminTicketDetailsPage() {
           </Panel>
         </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
-          <Stack spacing={3}>
-            <Panel title="Assignment">
-              <TicketAssignment ticket={t} engineers={engineers} onAssigned={refresh} />
-            </Panel>
-            <Panel title="Requester">
-              <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />
-            </Panel>
-          </Stack>
+          <Panel title="Requester">
+            <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />
+          </Panel>
         </Grid>
       </Grid>
 
@@ -118,10 +115,17 @@ function AdminTicketDetailsPage() {
       </Panel>
 
       <Panel title="Notes">
-        <NoteList notes={notes} />
+        <TicketNotes
+          ticketId={t.ticket_id}
+          closed={t.status === 'closed'}
+          notes={notes}
+          addNote={addAssignedTicketNote}
+          placeholder="Tell the requester what you've found or what happens next."
+          onAdded={refresh}
+        />
       </Panel>
     </Stack>
   )
 }
 
-export default AdminTicketDetailsPage
+export default EngineerTicketDetailsPage

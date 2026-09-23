@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 # These mirror the CHECK constraints in sql/schema.sql, and Role mirrors the rows seeded
 # into its roles table. Ticket priority (P1-P3) is stored for engineer/admin triage but is
-# deliberately not part of any employee model; only the Admin* models carry it.
+# deliberately not part of any employee model; only the staff (Admin*) models carry it,
+# which engineers use too.
 Role = Literal["employee", "engineer", "admin"]
 Priority = Literal["P1", "P2", "P3"]
 Category = Literal[
@@ -324,3 +325,24 @@ class EngineerWorkload(BaseModel):
     in_progress_count: int
     blocked_count: int
     p1_count: int
+
+
+# --- Engineer -------------------------------------------------------------------
+# Engineers work their tickets with the same staff views as admins (AdminTicketListItem,
+# AdminTicketDetail): priority and the requester's contact details included.
+
+
+class EngineerTicketFilters(BaseModel):
+    """Query parameters for an engineer's own queue. All optional; they combine with AND.
+
+    There's no assignee filter: the queue is always the caller's. Unknown parameters are a 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: TicketStatus | None = None
+    priority: Priority | None = None
+    building_id: DbId | None = None
+    # "active" is everything not closed; leave it out for every ticket they have.
+    view: Literal["active", "closed"] | None = None
+    q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None

@@ -111,6 +111,11 @@
     {
       "key": "otherUserId",
       "value": ""
+    },
+    {
+      "key": "engineerAccessToken",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -3047,6 +3052,757 @@
                   }
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Engineer",
+      "description": "An engineer's own queue (`/engineer/...`). Sets itself up with the admin token: promotes the collection's second user to engineer and assigns them the ticket, then signs them in. Needs `adminEmail` and `adminPassword` like the Admin folder.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{engineerAccessToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// The setup needs the admin, and everything after it needs the engineer's token.",
+              "const needs = pm.info.requestName.startsWith('Setup') || pm.info.requestName === 'Login - engineer'",
+              "  ? 'adminAccessToken' : 'engineerAccessToken';",
+              "if (!pm.collectionVariables.get(needs)) {",
+              "  console.warn(`Skipped \"${pm.info.requestName}\": no ${needs}.`);",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Setup - make the second user an engineer (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{otherUserId}}/role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{otherUserId}}",
+                "role"
+              ]
+            },
+            "description": "Uses the admin token. The second user (from Register) becomes this folder's engineer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"engineer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now an engineer', () => pm.expect(pm.response.json().role).to.eql('engineer'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - assign them the ticket (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}",
+                "assignment"
+              ]
+            },
+            "description": "Uses the admin token. Gives the employee's ticket to the new engineer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"engineer_id\": {{otherUserId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Assigned to them', () => pm.expect(pm.response.json().assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('otherUserId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - engineer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Signs the second user in again: their role changed, so their old token no longer works. Saves `{{engineerAccessToken}}`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.unset('engineerAccessToken');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Signed in as an engineer', () => pm.expect(body.user && body.user.role).to.eql('engineer'));",
+                  "if (body.user && body.user.role === 'engineer') pm.collectionVariables.set('engineerAccessToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets?view=active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "Tickets assigned to the caller, P1 first then oldest. Filters: view, status, priority, building_id, q."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tickets = pm.response.json();",
+                  "pm.test('Includes the assigned ticket', () => pm.expect(tickets.map((t) => t.ticket_id)).to.include(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Only mine', () => tickets.forEach((t) => pm.expect(t.assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('otherUserId')))));",
+                  "pm.test('Rows carry priority and requester', () => tickets.forEach((t) => pm.expect(t).to.include.keys('priority', 'created_by_name')));",
+                  "pm.test('Nothing closed', () => tickets.forEach((t) => pm.expect(t.status).to.not.eql('closed')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My queue - filtered",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets?priority=P3&q={{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "priority",
+                  "value": "P3"
+                },
+                {
+                  "key": "q",
+                  "value": "{{ticketId}}"
+                }
+              ]
+            },
+            "description": "The collection's ticket is scope 'me', so P3; `q` also matches an exact ticket id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Exactly the ticket', () => pm.expect(pm.response.json().map((t) => t.ticket_id)).to.eql([Number(pm.collectionVariables.get('ticketId'))]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My queue - assignee filter rejected (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets?assigned_to=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "assigned_to",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "The queue is always the caller's; there's no way to ask for someone else's."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at assigned_to', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['query', 'assigned_to']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket (engineer)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Priority and requester contact', () => {",
+                  "  pm.expect(ticket.priority).to.eql('P3');",
+                  "  pm.expect(ticket.created_by_email).to.eql(pm.collectionVariables.get('email'));",
+                  "  pm.expect(ticket.created_by_phone).to.eql('555-0101');",
+                  "});",
+                  "pm.test('Mine', () => pm.expect(ticket.assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('otherUserId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket (engineer) - unknown id (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{missingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{missingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status history (engineer)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Starts with the ticket being opened', () => {",
+                  "  const history = pm.response.json();",
+                  "  pm.expect(history[0].from_status).to.be.null;",
+                  "  pm.expect(history[0].to_status).to.eql('open');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add note (engineer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "Trimmed like employee notes. Closed tickets return 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note_text\": \"  On my way with a new Wi-Fi card.  \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const note = pm.response.json();",
+                  "pm.test('Written by the engineer', () => {",
+                  "  pm.expect(note.user_id).to.eql(Number(pm.collectionVariables.get('otherUserId')));",
+                  "  pm.expect(note.author_role).to.eql('engineer');",
+                  "  pm.expect(note.note_text).to.eql('On my way with a new Wi-Fi card.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add note (engineer) - blank text (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note_text\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at note_text', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'note_text']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notes (engineer)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('The employee\\'s note, then the engineer\\'s', () => {",
+                  "  const roles = pm.response.json().map((n) => n.author_role);",
+                  "  pm.expect(roles[0]).to.eql('employee');",
+                  "  pm.expect(roles[roles.length - 1]).to.eql('engineer');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notes - the employee sees the engineer's note",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "Uses the employee's `{{accessToken}}` on the employee route.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Includes the engineer\\'s note', () => pm.expect(pm.response.json().some((n) => n.author_role === 'engineer' && n.user_id === Number(pm.collectionVariables.get('otherUserId')))).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My queue - as an employee (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"You don't have access to this.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reassign away (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}",
+                "assignment"
+              ]
+            },
+            "description": "Uses the admin token. Moves the ticket to `{{otherEngineerId}}` (from Assign); skipped if Assign was.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"engineer_id\": {{otherEngineerId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('otherEngineerId')) {",
+                  "  console.warn(`Skipped \"${pm.info.requestName}\": no second engineer (the Assign folder was skipped).`);",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket (engineer) - reassigned away (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": "A ticket that's no longer yours is 'not found', not 403."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('otherEngineerId')) {",
+                  "  console.warn(`Skipped \"${pm.info.requestName}\": no second engineer (the Assign folder was skipped).`);",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Looks like a missing ticket', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
             }
           ]
         }

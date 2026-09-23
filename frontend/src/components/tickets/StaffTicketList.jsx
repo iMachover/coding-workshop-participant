@@ -16,18 +16,19 @@ import { Link as RouterLink } from 'react-router'
 
 import useIsMobile from '../../hooks/useIsMobile'
 import { formatDateTime, formatLocation, PRIORITIES } from '../../utils/ticketFormat'
-import EscalatedChip from '../tickets/EscalatedChip'
-import PriorityChip from '../tickets/PriorityChip'
-import StatusLabel from '../tickets/StatusLabel'
+import EscalatedChip from './EscalatedChip'
+import PriorityChip from './PriorityChip'
+import StatusLabel from './StatusLabel'
 
-const detailsPath = (ticket) => `/admin/tickets/${ticket.ticket_id}`
 const engineerName = (ticket) => ticket.assigned_to_name ?? 'Unassigned'
 
 /**
- * Every ticket for the Facility Admin, in the API's triage order: a table on larger
- * screens, stacked cards on phones. Each ticket links to its admin details page.
+ * Tickets for staff (admins and engineers), in the API's triage order: a table on larger
+ * screens, stacked cards on phones. Shows priority, so never use it on employee pages.
+ * `detailsPath(ticket)` is where each ticket links; the Engineer column is left out of an
+ * engineer's own queue, where it would always be them.
  */
-function AdminTicketList({ tickets }) {
+function StaffTicketList({ tickets, label, detailsPath, showEngineer = true }) {
   const isMobile = useIsMobile()
 
   if (isMobile) {
@@ -49,7 +50,7 @@ function AdminTicketList({ tickets }) {
                   {t.created_by_name} · {formatLocation(t)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Engineer: {engineerName(t)} · Opened {formatDateTime(t.created_at)}
+                  {showEngineer && `Engineer: ${engineerName(t)} · `}Opened {formatDateTime(t.created_at)}
                 </Typography>
               </CardContent>
             </CardActionArea>
@@ -61,7 +62,7 @@ function AdminTicketList({ tickets }) {
 
   return (
     <TableContainer component={Card}>
-      <Table size="small" aria-label="All tickets">
+      <Table size="small" aria-label={label}>
         <TableHead>
           <TableRow>
             <TableCell>Priority</TableCell>
@@ -69,7 +70,7 @@ function AdminTicketList({ tickets }) {
             <TableCell>Title</TableCell>
             <TableCell>Status</TableCell>
             <TableCell>Requester</TableCell>
-            <TableCell>Engineer</TableCell>
+            {showEngineer && <TableCell>Engineer</TableCell>}
             <TableCell>Location</TableCell>
             <TableCell>Opened</TableCell>
           </TableRow>
@@ -93,9 +94,11 @@ function AdminTicketList({ tickets }) {
                 <StatusLabel status={t.status} />
               </TableCell>
               <TableCell>{t.created_by_name}</TableCell>
-              <TableCell sx={{ color: t.assigned_to_name ? 'text.primary' : 'text.secondary' }}>
-                {engineerName(t)}
-              </TableCell>
+              {showEngineer && (
+                <TableCell sx={{ color: t.assigned_to_name ? 'text.primary' : 'text.secondary' }}>
+                  {engineerName(t)}
+                </TableCell>
+              )}
               <TableCell>{formatLocation(t)}</TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateTime(t.created_at)}</TableCell>
             </TableRow>
@@ -106,7 +109,7 @@ function AdminTicketList({ tickets }) {
   )
 }
 
-AdminTicketList.propTypes = {
+StaffTicketList.propTypes = {
   tickets: PropTypes.arrayOf(
     PropTypes.shape({
       ticket_id: PropTypes.number.isRequired,
@@ -120,6 +123,9 @@ AdminTicketList.propTypes = {
       created_at: PropTypes.string.isRequired,
     }),
   ).isRequired,
+  label: PropTypes.string.isRequired,
+  detailsPath: PropTypes.func.isRequired,
+  showEngineer: PropTypes.bool,
 }
 
-export default AdminTicketList
+export default StaffTicketList

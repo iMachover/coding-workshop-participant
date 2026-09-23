@@ -30,10 +30,11 @@ export function roleLabel(role) {
 
 /**
  * Header navigation per role. `section` is the path prefix that marks a link current, so
- * a ticket's details (/admin/tickets/5) still highlights Dashboard. Roles with a single
- * page get no links.
+ * a ticket's details (/admin/tickets/5) still highlights Dashboard. Employees have no
+ * links yet: their dashboard links to everything they need.
  */
 export const NAV_LINKS = {
+  engineer: [{ to: '/engineer', label: 'My queue', section: '/engineer' }],
   admin: [
     { to: '/admin', label: 'Dashboard', section: '/admin' },
     { to: '/admin/people', label: 'People', section: '/admin/people' },

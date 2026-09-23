@@ -17,6 +17,13 @@ vi.mock('./services/adminUserService', () => ({
   listEngineers: vi.fn().mockResolvedValue([]),
   listUsers: vi.fn().mockResolvedValue([]),
 }))
+vi.mock('./services/engineerTicketService', () => ({
+  listMyQueue: vi.fn().mockResolvedValue([]),
+  getAssignedTicket: vi.fn(),
+  listAssignedTicketHistory: vi.fn(),
+  listAssignedTicketNotes: vi.fn(),
+  addAssignedTicketNote: vi.fn(),
+}))
 
 const heading = () => screen.getByRole('heading', { level: 1 })
 
@@ -56,24 +63,23 @@ describe('routing by role', () => {
   })
 
   it.each([
-    ['engineer', '/', 'Engineer workspace', SAM],
-    ['engineer', '/login', 'Engineer workspace', SAM],
-    ['engineer', '/register', 'Engineer workspace', SAM],
-    ['engineer', '/engineer', 'Engineer workspace', SAM],
+    ['engineer', '/', 'My queue', SAM],
+    ['engineer', '/login', 'My queue', SAM],
+    ['engineer', '/register', 'My queue', SAM],
+    ['engineer', '/engineer', 'My queue', SAM],
     ['admin', '/', 'Facility Admin dashboard', ALEX],
     ['admin', '/login', 'Facility Admin dashboard', ALEX],
     ['admin', '/admin', 'Facility Admin dashboard', ALEX],
   ])('%s at %s sees "%s"', async (_role, route, name, user) => {
     renderWithProviders(<App />, { route, user })
     expect(heading()).toHaveTextContent(name)
-    // Let the admin dashboard's first loads settle before the test ends.
+    // Let the dashboard's first loads settle before the test ends.
     await act(async () => {})
   })
 
-  it('tells engineers what their start page will hold, without calling the tickets API', () => {
+  it('gives engineers their queue, without calling the employee tickets API', async () => {
     renderWithProviders(<App />, { route: '/engineer', user: SAM })
-    expect(screen.getByText('Signed in as Sam Tech · Engineer')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Your ticket queue is on its way.')
+    expect(await screen.findByText('Nothing to work on right now')).toBeInTheDocument()
     expect(listMyTickets).not.toHaveBeenCalled()
   })
 
@@ -112,7 +118,8 @@ describe('routing by role', () => {
 
     await user.click(screen.getByRole('link', { name: 'Go to my start page' }))
 
-    expect(heading()).toHaveTextContent('Engineer workspace')
+    expect(heading()).toHaveTextContent('My queue')
+    await act(async () => {})
   })
 })
 
@@ -148,8 +155,15 @@ describe('header navigation', () => {
     await act(async () => {})
   })
 
-  it.each([['employee', JANE], ['engineer', SAM]])('gives %s no page links', (_role, user) => {
-    renderWithProviders(<App />, { route: '/', user })
+  it('gives engineers a link to their queue, current on a ticket too', () => {
+    // An invalid id shows "not found" without calling the API; the header is what matters here.
+    renderWithProviders(<App />, { route: '/engineer/tickets/abc', user: SAM })
+    expect(within(nav()).getByRole('link', { current: 'page' })).toHaveTextContent('My queue')
+    expect(within(nav()).getByRole('link', { name: 'My queue' })).toHaveAttribute('href', '/engineer')
+  })
+
+  it('gives employees no page links', () => {
+    renderWithProviders(<App />, { route: '/', user: JANE })
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument()
   })
 })

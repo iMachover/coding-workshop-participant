@@ -13,6 +13,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
 - [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning, people and roles
+- [Engineer](#engineer): my queue (filters, triage order), ticket details, status history, notes (list/add)
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -27,7 +28,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin) with **67 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer) with **83 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -45,7 +46,8 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `adminAccessToken`, `adminUserId` | Login - admin | The Admin folder's `Authorization: Bearer` header; checking admin accounts can't be changed |
 | `engineerId`, `otherEngineerId` | List engineers (the first two) | Assign and reassign |
 | `acknowledgedAt` | Assign ticket | Checking a reassignment keeps the first acknowledgement |
-| `otherUserId` | List people - employee by email | Promoting the second user and moving them back |
+| `otherUserId` | List people - employee by email | Promoting the second user and moving them back; the Engineer folder's engineer |
+| `engineerAccessToken` | Login - engineer | The Engineer folder's `Authorization: Bearer` header |
 
 A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
 
@@ -75,6 +77,8 @@ psql -U test -d codingworkshop -c "UPDATE users SET role_id = (SELECT role_id FR
 
 Then set the collection variables `adminEmail` and `adminPassword` to the admin account (or pass them with `--env-var` to newman, as above). Without them, **Login - admin** fails with "adminEmail and adminPassword are set" and the rest of the Admin folder is skipped. With fewer than two engineers, **List engineers** fails with "At least two engineers exist" and the Assign subfolder is skipped. Everything else still runs.
 
+The Engineer folder needs no account of its own: with the admin token, it promotes the collection's second user to engineer, assigns them the ticket, and signs them in with the password it registered them with. Without the admin variables it's skipped too.
+
 Every URL below is written as `{{baseUrl}}/...`.
 
 ---
@@ -93,7 +97,7 @@ The collection sends it automatically: its **Authorization** tab is type *Bearer
 
 On every request the server verifies the token's signature and expiry, then reloads the user from the database. So a deleted account, or a role changed since sign-in, stops the token working at once. The old dev-only `X-User-Id` header is gone: sending it does nothing.
 
-Routes also check the caller's **role**. `/tickets` is for employees; engineers and admins get 403 there. `/admin/...` is for Facility Admins; employees and engineers get 403 there. `/auth/me` and the location lists work for every signed-in role.
+Routes also check the caller's **role**. `/tickets` is for employees; engineers and admins get 403 there. `/admin/...` is for Facility Admins; employees and engineers get 403 there. `/engineer/...` is for engineers; employees and admins get 403 there. `/auth/me` and the location lists work for every signed-in role.
 
 ### Request bodies
 
@@ -1167,6 +1171,202 @@ The change **signs that person out**: their current token no longer matches thei
 
 ---
 
+## Engineer
+
+An engineer's own queue. **Engineer-only**: employees and admins get `403 {"detail":"You don't have access to this."}`. Every route acts on the tickets **currently assigned to the caller**. Any other ticket (unassigned, someone else's, reassigned away, or missing) returns **404, not 403**, so its existence isn't revealed. Rows and details use the same shapes as the admin routes, so they include `priority` and the requester's contact details. Status changes come later.
+
+In the collection, the Engineer folder's Authorization tab is `Bearer {{engineerAccessToken}}`, saved by **Login - engineer**. Its first two requests use the admin token to set up the engineer (see [Setup step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)).
+
+### My queue
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/engineer/tickets` |
+| **Auth** | `Authorization: Bearer {{engineerAccessToken}}` |
+
+**Query params** (all optional, combined with AND)
+
+| Param | Values | Notes |
+|---|---|---|
+| `view` | `active`, `closed` | `active` = everything not closed; leave it out for all |
+| `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` | |
+| `priority` | `P1`, `P2`, `P3` | |
+| `building_id` | positive integer | |
+| `q` | text, max 100 | Case-insensitive match on title, short description, requester name or email, or an exact ticket id |
+
+There's no assignee filter, because the queue is always the caller's: `assigned_to`, like any unknown parameter, is a 422.
+
+Examples: `{{baseUrl}}/engineer/tickets?view=active`, `{{baseUrl}}/engineer/tickets?priority=P1&q=lobby`
+
+**Expected response: `200 OK`.** Sorted for triage: **priority first (P1, P2, P3), then the oldest created first**. Same row shape as [List all tickets](#list-all-tickets). Returns `[]` when nothing matches or nothing is assigned yet.
+
+```json
+[
+  {
+    "ticket_id": 1,
+    "title": "Lobby lights out",
+    "short_description": "x",
+    "category": "building_facilities",
+    "status": "open",
+    "urgency": "high",
+    "affected_scope": "building",
+    "escalation_requested": false,
+    "building_id": 1,
+    "building_name": "Building A",
+    "floor_id": null,
+    "floor_number": null,
+    "seat_id": null,
+    "seat_number": null,
+    "created_at": "2026-09-23T16:47:56.796534-04:00",
+    "updated_at": "2026-09-23T16:47:56.853239-04:00",
+    "priority": "P1",
+    "created_by_user_id": 4,
+    "created_by_name": "Jane Doe",
+    "assigned_to_user_id": 2,
+    "assigned_to_name": "Sam Tech"
+  }
+]
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 422 | Unknown value (e.g. `priority=P4`, `view=all`) or unknown parameter (e.g. `assigned_to`) | FastAPI validation list, e.g. `loc: ["query","assigned_to"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or admin | `{"detail":"You don't have access to this."}` |
+
+### Get one of my tickets (engineer)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/engineer/tickets/:ticket_id` |
+| **Auth** | `Authorization: Bearer {{engineerAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.** The same shape as [Get any ticket (admin)](#get-any-ticket-admin): the full ticket, `priority`, and the requester's name, email and phone.
+
+```json
+{
+  "ticket_id": 1,
+  "title": "Lobby lights out",
+  "short_description": "x",
+  "description": "y",
+  "category": "building_facilities",
+  "urgency": "high",
+  "affected_scope": "building",
+  "status": "open",
+  "building_id": 1,
+  "floor_id": null,
+  "seat_id": null,
+  "created_by_user_id": 4,
+  "assigned_to_user_id": 2,
+  "escalation_requested": false,
+  "escalation_reason": null,
+  "blocked_reason": null,
+  "created_at": "2026-09-23T16:47:56.796534-04:00",
+  "updated_at": "2026-09-23T16:47:56.853239-04:00",
+  "acknowledged_at": "2026-09-23T16:47:56.853239-04:00",
+  "assigned_at": "2026-09-23T16:47:56.853239-04:00",
+  "resolved_at": null,
+  "building_name": "Building A",
+  "floor_number": null,
+  "seat_number": null,
+  "assigned_to_name": "Sam Tech",
+  "priority": "P1",
+  "created_by_name": "Jane Doe",
+  "created_by_email": "jane.doe@acme.inc",
+  "created_by_phone": null
+}
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 404 | Ticket doesn't exist, **or isn't assigned to you** (unassigned, someone else's, reassigned away) | `{"detail":"Ticket not found"}` |
+| 422 | `ticket_id` not a positive integer | `loc: ["path","ticket_id"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or admin | `{"detail":"You don't have access to this."}` |
+
+### Status history (engineer)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/engineer/tickets/:ticket_id/history` |
+| **Auth** | `Authorization: Bearer {{engineerAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.** Same shape as [List status history](#list-status-history), oldest first.
+
+```json
+[
+  {
+    "history_id": 1,
+    "ticket_id": 1,
+    "from_status": null,
+    "to_status": "open",
+    "changed_by_user_id": 4,
+    "changed_by_name": "Jane Doe",
+    "changed_by_role": "employee",
+    "reason": null,
+    "changed_at": "2026-09-23T16:47:56.796534-04:00"
+  }
+]
+```
+
+**Errors:** same as [Get one of my tickets (engineer)](#get-one-of-my-tickets-engineer) (404 / 422 / 401 / 403).
+
+### Notes (engineer)
+
+List every note on one of your tickets (from the employee and engineers, oldest first), or add one.
+
+| | List | Add |
+|---|---|---|
+| **Method** | `GET` | `POST` |
+| **URL** | `{{baseUrl}}/engineer/tickets/:ticket_id/notes` | same |
+| **Auth** | `Authorization: Bearer {{engineerAccessToken}}` | same |
+| **Body** | none | `{"note_text": "..."}` |
+
+**Request body** (add)
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `note_text` | string | yes | Trimmed; 1–2000 characters |
+
+```json
+{ "note_text": "Replacing the breaker this afternoon." }
+```
+
+**Expected response: `201 Created`** (add), in the [List notes on a ticket](#list-notes-on-a-ticket) shape. The employee sees it in their own notes list, and it moves the ticket's `updated_at` forward. Listing returns `200 OK` with every note.
+
+```json
+{
+  "note_id": 1,
+  "ticket_id": 1,
+  "user_id": 2,
+  "author_name": "Sam Tech",
+  "author_role": "engineer",
+  "note_text": "Replacing the breaker this afternoon.",
+  "created_at": "2026-09-23T16:47:56.987070-04:00"
+}
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 404 | Ticket doesn't exist or isn't assigned to you | `{"detail":"Ticket not found"}` |
+| 409 | Adding to a closed ticket | `{"detail":"Closed tickets can't take new notes"}` |
+| 422 | Blank `note_text`, or over 2000 characters | `loc: ["body","note_text"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or admin | `{"detail":"You don't have access to this."}` |
+
+---
+
 ## Suggested test run
 
 **Run collection** does all of this (and a few more error cases) automatically. The table is the short version, if you'd rather click through by hand. Run the steps in order; each builds on the one before.
@@ -1211,3 +1411,11 @@ The change **signs that person out**: their current token no longer matches thei
 | 36 | Move the engineer from step 29 back to employee | 409, they still have the ticket |
 | 37 | `PUT /admin/users/<your admin id>/role` | 403 |
 | 38 | `{"role":"admin"}` for anyone | 422 |
+| 39 | As the admin: make the second user an engineer, and assign them `{{ticketId}}` | 200, 200 |
+| 40 | `POST /auth/login` as the second user (sets `{{engineerAccessToken}}`) | 200, `user.role: "engineer"` |
+| 41 | `GET /engineer/tickets?view=active` | 200, includes `{{ticketId}}`, every row assigned to them |
+| 42 | `GET /engineer/tickets?assigned_to=1` | 422 |
+| 43 | `GET /engineer/tickets/{{ticketId}}` | 200, `priority` and the requester's email and phone |
+| 44 | `POST /engineer/tickets/{{ticketId}}/notes` | 201, `author_role: "engineer"` |
+| 45 | `GET /tickets/{{ticketId}}/notes` with the employee's token | 200, includes the engineer's note |
+| 46 | As the admin, reassign `{{ticketId}}` to another engineer; then `GET /engineer/tickets/{{ticketId}}` as the engineer | 200, then 404 |

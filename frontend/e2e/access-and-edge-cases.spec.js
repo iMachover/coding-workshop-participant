@@ -89,7 +89,7 @@ test('a forged or stale token is signed out with an explanation', async ({ page 
   await expect(page.getByRole('alert')).toHaveText('Your session has ended. Please sign in again.')
 })
 
-test('an engineer lands on their own workspace and never calls the employee API', async ({ page, request }) => {
+test('an engineer lands on their own queue and never calls the employee API', async ({ page, request }) => {
   const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
   setRole(engineer.user_id, 'engineer')
   const ticketCalls = []
@@ -103,13 +103,13 @@ test('an engineer lands on their own workspace and never calls the employee API'
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   await expect(page).toHaveURL(/\/engineer$/)
-  await expect(page.getByRole('heading', { level: 1, name: 'Engineer workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'My queue' })).toBeVisible()
   await expect(page.getByRole('banner')).toContainText('Engineer')
 
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { level: 1, name: "You don't have access to this" })).toBeVisible()
   await page.getByRole('link', { name: 'Go to my start page' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Engineer workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'My queue' })).toBeVisible()
 
   expect(ticketCalls).toEqual([])
 })

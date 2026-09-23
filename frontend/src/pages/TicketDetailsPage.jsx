@@ -21,7 +21,7 @@ import TicketNotes from '../components/tickets/TicketNotes'
 import TicketWorkflow from '../components/tickets/TicketWorkflow'
 import UrgencyLabel from '../components/tickets/UrgencyLabel'
 import useApiData from '../hooks/useApiData'
-import { getMyTicket, listNotes, listStatusHistory } from '../services/ticketService'
+import { addNote, getMyTicket, listNotes, listStatusHistory } from '../services/ticketService'
 import { SCOPES } from '../utils/ticketFormat'
 
 function BackToDashboard() {
@@ -143,7 +143,14 @@ function TicketDetailsPage() {
       </Grid>
 
       <Panel title="Notes">
-        <TicketNotes ticketId={t.ticket_id} closed={t.status === 'closed'} notes={notes} onAdded={refresh} />
+        <TicketNotes
+          ticketId={t.ticket_id}
+          closed={t.status === 'closed'}
+          notes={notes}
+          addNote={addNote}
+          placeholder="Add details, answer a question or tell the engineer what changed."
+          onAdded={refresh}
+        />
       </Panel>
     </Stack>
   )

@@ -140,3 +140,63 @@ export const USERS = [
   { user_id: 6, email: 'kim@acme.inc', full_name: 'Kim Fixit', phone_number: null, role: 'engineer', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 0 },
   { user_id: 4, email: 'sam@acme.inc', full_name: 'Sam Tech', phone_number: null, role: 'engineer', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 3 },
 ]
+
+/**
+ * GET /api/core/engineer/tickets?view=active for Sam (user 4): his tickets in triage
+ * order (P1 first, then oldest). #9 is the one he touched most recently.
+ */
+export const QUEUE = [
+  makeAdminTicket({
+    ticket_id: 7,
+    title: 'Lobby lights out',
+    category: 'electrical',
+    affected_scope: 'building',
+    priority: 'P1',
+    building_id: 2,
+    building_name: 'Building B',
+    floor_id: null,
+    floor_number: null,
+    seat_id: null,
+    seat_number: null,
+    created_by_name: 'Eve Other',
+    assigned_to_user_id: 4,
+    assigned_to_name: 'Sam Tech',
+    created_at: '2026-09-22T08:00:00-04:00',
+    updated_at: '2026-09-22T08:30:00-04:00',
+  }),
+  makeAdminTicket({
+    ticket_id: 5,
+    title: 'Printer jam',
+    category: 'printer',
+    status: 'in_progress',
+    affected_scope: 'floor',
+    priority: 'P2',
+    floor_number: 2,
+    seat_id: null,
+    seat_number: null,
+    assigned_to_user_id: 4,
+    assigned_to_name: 'Sam Tech',
+    created_at: '2026-09-22T09:00:00-04:00',
+    updated_at: '2026-09-22T10:00:00-04:00',
+  }),
+  makeAdminTicket({
+    ticket_id: 9,
+    title: 'Wi-Fi keeps dropping',
+    status: 'in_progress',
+    escalation_requested: true,
+    assigned_to_user_id: 4,
+    assigned_to_name: 'Sam Tech',
+    created_at: '2026-09-22T10:00:00-04:00',
+    updated_at: '2026-09-22T11:00:00-04:00',
+  }),
+  makeAdminTicket({
+    ticket_id: 11,
+    title: 'Door sticks',
+    category: 'building_facilities',
+    status: 'blocked',
+    assigned_to_user_id: 4,
+    assigned_to_name: 'Sam Tech',
+    created_at: '2026-09-22T11:00:00-04:00',
+    updated_at: '2026-09-22T11:30:00-04:00',
+  }),
+]

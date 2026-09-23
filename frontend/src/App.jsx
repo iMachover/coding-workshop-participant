@@ -8,11 +8,12 @@ import CreateTicketPage from './pages/CreateTicketPage'
 import GuestRoute from './components/GuestRoute'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
+import EngineerDashboardPage from './pages/EngineerDashboardPage'
+import EngineerTicketDetailsPage from './pages/EngineerTicketDetailsPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 import PeoplePage from './pages/PeoplePage'
 import RegisterPage from './pages/RegisterPage'
-import StaffHomePage from './pages/StaffHomePage'
 import TicketDetailsPage from './pages/TicketDetailsPage'
 import { homePathFor } from './utils/roles'
 
@@ -24,8 +25,8 @@ function HomeRedirect() {
 
 /**
  * Route table: sign-in pages for guests, then one group per role. Employees report
- * and follow their own tickets; Facility Admins triage every ticket and manage who is
- * an engineer; engineers have a placeholder start page for now.
+ * and follow their own tickets; engineers work the tickets assigned to them; Facility
+ * Admins triage every ticket and manage who is an engineer.
  */
 function App() {
   return (
@@ -42,7 +43,8 @@ function App() {
           <Route path="tickets/:ticketId" element={<TicketDetailsPage />} />
         </Route>
         <Route element={<ProtectedRoute roles={['engineer']} />}>
-          <Route path="engineer" element={<StaffHomePage />} />
+          <Route path="engineer" element={<EngineerDashboardPage />} />
+          <Route path="engineer/tickets/:ticketId" element={<EngineerTicketDetailsPage />} />
         </Route>
         <Route element={<ProtectedRoute roles={['admin']} />}>
           <Route path="admin" element={<AdminDashboardPage />} />

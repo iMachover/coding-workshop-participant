@@ -44,7 +44,15 @@ describe('navLinksFor', () => {
     expect(current('admin', path)).toEqual(expected)
   })
 
-  it.each(['employee', 'engineer', 'someday-role'])('gives %s no links', (role) => {
+  it.each([
+    ['/engineer', ['My queue']],
+    ['/engineer/tickets/5', ['My queue']],
+  ])('gives engineers My queue, current at %s', (path, expected) => {
+    expect(navLinksFor('engineer', path).map((l) => l.to)).toEqual(['/engineer'])
+    expect(current('engineer', path)).toEqual(expected)
+  })
+
+  it.each(['employee', 'someday-role'])('gives %s no links', (role) => {
     expect(navLinksFor(role, '/')).toEqual([])
   })
 })

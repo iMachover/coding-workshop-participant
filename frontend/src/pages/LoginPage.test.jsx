@@ -17,6 +17,7 @@ vi.mock('../services/ticketService', () => ({ listMyTickets: vi.fn().mockResolve
 vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn().mockResolvedValue([]) }))
+vi.mock('../services/engineerTicketService', () => ({ listMyQueue: vi.fn().mockResolvedValue([]) }))
 
 const emailField = () => screen.getByLabelText(/^Work email/)
 const passwordField = () => screen.getByLabelText(/^Password/)
@@ -99,7 +100,7 @@ describe('LoginPage', () => {
   })
 
   it.each([
-    ['an engineer', SAM, 'Engineer workspace'],
+    ['an engineer', SAM, 'My queue'],
     ['an admin', ALEX, 'Facility Admin dashboard'],
   ])('sends %s to their own start page', async (_who, staff, name) => {
     vi.mocked(login).mockResolvedValue({ token: TEST_TOKEN, user: staff })

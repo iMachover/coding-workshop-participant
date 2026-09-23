@@ -1,16 +1,18 @@
 import { expect, test } from '@playwright/test'
 
 import { sql } from './db.js'
-import { choose, createTicketViaApi, registerViaApi, setRole, signIn, signInViaApi, uniqueEmail } from './helpers.js'
+import {
+  choose,
+  createTicketViaApi,
+  registerAdmin,
+  registerEngineer,
+  registerViaApi,
+  signIn,
+  signInViaApi,
+  uniqueEmail,
+} from './helpers.js'
 
 const ADMIN_HOME = 'Facility Admin dashboard'
-
-/** Register a user and make them an engineer (no API changes roles yet). */
-async function registerEngineer(request, name) {
-  const engineer = await registerViaApi(request, { name, email: uniqueEmail('engineer') })
-  setRole(engineer.user_id, 'engineer')
-  return engineer
-}
 
 /**
  * Three tickets from two employees, with a unique stamp in every title so other tests'
@@ -53,12 +55,6 @@ async function seedTickets(request) {
        assigned_at = now() WHERE ticket_id = ${Number(printer.ticket_id)}`)
 
   return { stamp, lee, lights, wifi, printer }
-}
-
-async function registerAdmin(request) {
-  const admin = await registerViaApi(request, { name: 'Ada Admin', email: uniqueEmail('admin') })
-  setRole(admin.user_id, 'admin')
-  return admin
 }
 
 /**
@@ -272,7 +268,7 @@ test('an admin promotes an employee and manages engineers from People', async ({
     await renPage.reload()
     await expect(renPage).toHaveURL(/\/login$/)
     await expect(renPage.getByRole('alert')).toHaveText('Your session has ended. Please sign in again.')
-    await signIn(renPage, ren.email, { home: 'Engineer workspace' })
+    await signIn(renPage, ren.email, { home: 'My queue' })
     await renPage.context().close()
   })
 

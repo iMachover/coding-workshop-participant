@@ -16,7 +16,7 @@ from errors import (
     NotFoundError,
     UnauthorizedError,
 )
-from routers import admin, auth, health, locations, tickets
+from routers import admin, auth, engineer, health, locations, tickets
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -69,6 +69,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(locations.router, prefix=API_PREFIX)
 app.include_router(tickets.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
+app.include_router(engineer.router, prefix=API_PREFIX)
 
 # Lambda entry point: Terraform wires Python services to function.handler.
 handler = Mangum(app, lifespan="off")

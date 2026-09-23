@@ -7,10 +7,10 @@ import Typography from '@mui/material/Typography'
 import { useSearchParams } from 'react-router'
 
 import AdminTicketFilters from '../components/admin/AdminTicketFilters'
-import AdminTicketList from '../components/admin/AdminTicketList'
 import EngineerWorkload from '../components/admin/EngineerWorkload'
 import UnassignedQueue from '../components/admin/UnassignedQueue'
 import TicketListSection from '../components/dashboard/TicketListSection'
+import StaffTicketList from '../components/tickets/StaffTicketList'
 import useAllTickets from '../hooks/useAllTickets'
 import useApiData from '../hooks/useApiData'
 import useDebouncedValue from '../hooks/useDebouncedValue'
@@ -28,6 +28,8 @@ const DEFAULT_FILTERS = {
   assigned_to: '',
   escalated: false,
 }
+
+const adminTicketPath = (ticket) => `/admin/tickets/${ticket.ticket_id}`
 
 // Active tickets with no engineer, in the API's triage order (P1 first, then oldest).
 const UNASSIGNED = { assignment: 'unassigned', view: 'active' }
@@ -116,7 +118,7 @@ function AdminDashboardPage() {
           engineers={engineers.data ?? []}
         />
         <TicketListSection list={list} filtersActive={filtersActive} onClearFilters={() => setFilters(DEFAULT_FILTERS)}>
-          <AdminTicketList tickets={list.tickets} />
+          <StaffTicketList tickets={list.tickets} label="All tickets" detailsPath={adminTicketPath} />
         </TicketListSection>
       </Box>
 

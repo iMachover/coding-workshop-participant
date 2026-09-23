@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import InputAdornment from '@mui/material/InputAdornment'
-import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
@@ -10,31 +9,9 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import SearchIcon from '@mui/icons-material/Search'
 
 import { CATEGORIES, PRIORITIES, STATUSES } from '../../utils/ticketFormat'
+import FilterSelect from '../FilterSelect'
 
 const ASSIGNMENTS = { unassigned: 'Unassigned', assigned: 'Assigned' }
-
-/** A labelled dropdown whose first option ("All …") clears it. */
-function FilterSelect({ label, allLabel, value, options, onChange, minWidth }) {
-  return (
-    <TextField select label={label} size="small" value={value} onChange={onChange} sx={{ minWidth }}>
-      <MenuItem value="">{allLabel}</MenuItem>
-      {options.map(([code, text]) => (
-        <MenuItem key={code} value={code}>
-          {text}
-        </MenuItem>
-      ))}
-    </TextField>
-  )
-}
-
-FilterSelect.propTypes = {
-  label: PropTypes.string.isRequired,
-  allLabel: PropTypes.string.isRequired,
-  value: PropTypes.string.isRequired,
-  options: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)).isRequired,
-  onChange: PropTypes.func.isRequired,
-  minWidth: PropTypes.number.isRequired,
-}
 
 /**
  * The admin's list controls: active/closed/all and search on top, then status,
