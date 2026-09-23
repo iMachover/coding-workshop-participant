@@ -37,8 +37,15 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `npx vite --port ${WEB_PORT} --strictPort`,
-      env: { ...process.env, API_PROXY_TARGET: `http://localhost:${API_PORT}` },
+      // --force bundles every dependency at startup. Otherwise a newly added import is
+      // found mid-run, and Vite re-bundles and reloads the page under test. Its own
+      // cache dir keeps that from disturbing a running `npm run dev`.
+      command: `npx vite --port ${WEB_PORT} --strictPort --force`,
+      env: {
+        ...process.env,
+        API_PROXY_TARGET: `http://localhost:${API_PORT}`,
+        E2E_VITE_CACHE_DIR: 'node_modules/.vite-e2e',
+      },
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: false,
       timeout: 30_000,

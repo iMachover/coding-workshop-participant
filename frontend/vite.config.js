@@ -18,6 +18,8 @@ function vendorChunk(id) {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // The e2e tests set their own, so they never rewrite the dev server's cache.
+  cacheDir: process.env.E2E_VITE_CACHE_DIR ?? 'node_modules/.vite',
   server: {
     port: 3000,
     // The app calls relative /api/core/... URLs. In AWS, CloudFront serves the app and
