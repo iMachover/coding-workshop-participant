@@ -3,16 +3,28 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
-import { assignTicket, listAllTickets } from '../services/adminTicketService'
+import { assignTicket, getMetrics, listAllTickets } from '../services/adminTicketService'
 import { listEngineers } from '../services/adminUserService'
 import { ApiError } from '../services/apiClient'
 import { listBuildings } from '../services/locationService'
 import { ADMIN_TICKETS, ENGINEERS } from '../test/fixtures'
 import { ALEX, renderWithProviders } from '../test/renderWithProviders'
 
-vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn(), assignTicket: vi.fn() }))
+vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn(), assignTicket: vi.fn(), getMetrics: vi.fn() }))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
+
+// GET /admin/metrics for ADMIN_TICKETS.
+const METRICS = {
+  unassigned: 2,
+  open: 2,
+  in_progress: 1,
+  blocked: 0,
+  resolved: 0,
+  active_p1: 1,
+  escalated: 1,
+  closed_last_7_days: 1,
+}
 
 const BUILDINGS = [
   { building_id: 1, building_name: 'Building A' },
@@ -65,6 +77,7 @@ beforeEach(() => {
   vi.mocked(listBuildings).mockReset().mockResolvedValue(BUILDINGS)
   vi.mocked(listEngineers).mockReset().mockResolvedValue(ENGINEERS)
   vi.mocked(assignTicket).mockReset()
+  vi.mocked(getMetrics).mockReset().mockResolvedValue(METRICS)
 })
 
 describe('AdminDashboardPage: needs an engineer', () => {
@@ -336,5 +349,88 @@ describe('AdminDashboardPage: engineer workload', () => {
     vi.mocked(listEngineers).mockResolvedValue([])
     renderDashboard()
     expect(await within(workload()).findByText(/No engineers yet/)).toBeInTheDocument()
+  })
+})
+
+describe('AdminDashboardPage: metric cards', () => {
+  const numbers = () => screen.getByRole('list', { name: 'Tickets in numbers' })
+  const card = (label) => within(numbers()).getByRole('button', { name: new RegExp(`^${label}:`) })
+
+  it('shows each count', async () => {
+    renderDashboard()
+    const cards = await within(await screen.findByRole('list', { name: 'Tickets in numbers' })).findAllByRole('button')
+    expect(cards.map((c) => c.textContent)).toEqual([
+      'Unassigned2',
+      'Open2',
+      'In Progress1',
+      'Blocked0',
+      'Ready to close0',
+      'Active P11',
+      'Escalated1',
+      'Closed (7 days)1',
+    ])
+  })
+
+  it.each([
+    ['Unassigned', { view: 'active', assignment: 'unassigned' }],
+    ['Open', { view: 'active', status: 'open' }],
+    ['Ready to close', { view: 'active', status: 'resolved' }],
+    ['Active P1', { view: 'active', priority: 'P1' }],
+    ['Escalated', { view: 'active', escalated: true }],
+    ['Closed \\(7 days\\)', { view: 'closed' }],
+  ])('%s shows exactly its tickets, and again clears it', async (label, query) => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    await screen.findByRole('list', { name: 'Tickets in numbers' })
+
+    await user.click(card(label))
+
+    await waitFor(() => expect(lastListFilters()).toEqual(query))
+    expect(card(label)).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(card(label))
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active' }))
+    expect(card(label)).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows as selected when the filters match a card by hand', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    await screen.findByRole('list', { name: 'Tickets in numbers' })
+
+    await choose(user, 'Status', 'Blocked')
+
+    expect(card('Blocked')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows a placeholder while loading', () => {
+    vi.mocked(getMetrics).mockReturnValue(new Promise(() => {}))
+    renderDashboard()
+    expect(screen.getByLabelText('Loading the numbers')).toBeInTheDocument()
+  })
+
+  it('explains a failed load and retries', async () => {
+    vi.mocked(getMetrics)
+      .mockRejectedValueOnce(new ApiError('Something went wrong on our side. Please try again.', { status: 500 }))
+      .mockResolvedValue(METRICS)
+    const user = renderDashboard()
+
+    const alert = await screen.findByText('Something went wrong on our side. Please try again.')
+    await user.click(within(alert.closest('[role="alert"]')).getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('list', { name: 'Tickets in numbers' })).toBeInTheDocument()
+  })
+
+  it('refreshes after a quick assign', async () => {
+    vi.mocked(assignTicket).mockResolvedValue({ ...ADMIN_TICKETS[0], assigned_to_user_id: 6, assigned_to_name: 'Kim Fixit' })
+    const user = renderDashboard()
+    const card7 = (await within(queue()).findAllByRole('listitem')).find((c) => within(c).queryByText(/#7/))
+    await user.click(within(card7).getByRole('combobox', { name: 'Assign to' }))
+    await user.click(screen.getByRole('option', { name: 'Kim Fixit · 0 active' }))
+    const loads = vi.mocked(getMetrics).mock.calls.length
+
+    await user.click(within(card7).getByRole('button', { name: 'Assign' }))
+
+    await screen.findByText('#7 assigned to Kim Fixit.')
+    expect(vi.mocked(getMetrics).mock.calls.length).toBe(loads + 1)
   })
 })

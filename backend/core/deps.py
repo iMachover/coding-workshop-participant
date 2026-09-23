@@ -56,3 +56,6 @@ EmployeeUser = Annotated[dict[str, Any], Depends(require_role("employee"))]
 
 # An engineer working their own queue (/engineer).
 EngineerUser = Annotated[dict[str, Any], Depends(require_role("engineer"))]
+
+# A Facility Admin, for /admin routes that record who acted (e.g. closing a ticket).
+AdminUser = Annotated[dict[str, Any], Depends(require_role("admin"))]

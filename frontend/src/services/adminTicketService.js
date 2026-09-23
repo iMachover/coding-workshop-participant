@@ -46,3 +46,27 @@ export function listTicketHistory({ ticketId }, { signal } = {}) {
 export function assignTicket(ticketId, engineerId) {
   return api.put(`/admin/tickets/${Number(ticketId)}/assignment`, { engineer_id: Number(engineerId) })
 }
+
+/**
+ * Close a resolved ticket, or send it back to its engineer. Resolves with the updated
+ * ticket. A blank reason is left out (it's required to send back; the API says so with a
+ * 422). Rejects with 409 unless the ticket is resolved.
+ * @param {number|string} ticketId
+ * @param {'closed'|'in_progress'} status
+ * @param {string} [reason] what's still wrong, or an optional closing note
+ */
+export function finishTicket(ticketId, status, reason = '') {
+  const body = { status }
+  if (reason.trim()) body.reason = reason.trim()
+  return api.post(`/admin/tickets/${Number(ticketId)}/status`, body)
+}
+
+/**
+ * The dashboard's headline counts: unassigned, by status, active P1s, escalations and
+ * closes in the last 7 days. "Active" means not closed, as in listAllTickets.
+ * @param {object} [_params] unused; lets useApiData call it like the other loaders
+ * @param {{signal?: AbortSignal}} [options]
+ */
+export function getMetrics(_params = {}, { signal } = {}) {
+  return api.get('/admin/metrics', { signal })
+}

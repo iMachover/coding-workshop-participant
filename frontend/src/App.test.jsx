@@ -11,7 +11,10 @@ import { ALEX, JANE, renderWithProviders, SAM } from './test/renderWithProviders
 
 // The dashboards load tickets on arrival; these tests only care about routing and sign-in.
 vi.mock('./services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
-vi.mock('./services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/adminTicketService', () => ({
+  listAllTickets: vi.fn().mockResolvedValue([]),
+  getMetrics: vi.fn().mockResolvedValue({ unassigned: 0, open: 0, in_progress: 0, blocked: 0, resolved: 0, active_p1: 0, escalated: 0, closed_last_7_days: 0 }),
+}))
 vi.mock('./services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/adminUserService', () => ({
   listEngineers: vi.fn().mockResolvedValue([]),

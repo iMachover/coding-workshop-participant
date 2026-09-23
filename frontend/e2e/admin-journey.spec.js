@@ -290,6 +290,85 @@ test('an admin promotes an employee and manages engineers from People', async ({
   })
 })
 
+/**
+ * A4 through the UI: the metric cards -> "Ready to close" lists resolved tickets -> close
+ * one with a note (the employee sees it) -> send the other back to its engineer, who has
+ * it again.
+ */
+test('an admin closes one resolved ticket and sends another back', async ({ page, request }) => {
+  const stamp = Date.now()
+  const employee = await registerViaApi(request, { name: 'Dana Requester', email: uniqueEmail('dana') })
+  const engineer = await registerEngineer(request, `Rae Resolver ${stamp}`)
+  const admin = await registerAdmin(request)
+  const adminHeaders = await signInViaApi(request, admin.email)
+  const engineerHeaders = await signInViaApi(request, engineer.email)
+
+  // Two tickets the engineer has already worked and resolved, through the API.
+  const resolveTicket = async (title) => {
+    const ticket = await createTicketViaApi(request, employee, { title: `${title} ${stamp}` })
+    const call = async (method, url, data, headers) => expect((await request[method](url, { headers, data })).status()).toBe(200)
+    await call('put', `/api/core/admin/tickets/${ticket.ticket_id}/assignment`, { engineer_id: engineer.user_id }, adminHeaders)
+    await call('post', `/api/core/engineer/tickets/${ticket.ticket_id}/status`, { status: 'in_progress' }, engineerHeaders)
+    await call('post', `/api/core/engineer/tickets/${ticket.ticket_id}/status`, { status: 'resolved', reason: 'Fixed it' }, engineerHeaders)
+    return ticket
+  }
+  const toClose = await resolveTicket('Door sticks')
+  const toSendBack = await resolveTicket('Heater rattles')
+
+  await signIn(page, admin.email, { home: ADMIN_HOME })
+  const numbers = page.getByRole('list', { name: 'Tickets in numbers' })
+  const titles = () => page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')
+  const finishing = page.getByRole('region', { name: 'Finish ticket' })
+
+  await test.step('"Ready to close" lists the resolved tickets', async () => {
+    const readyCard = numbers.getByRole('button', { name: /^Ready to close: \d+/ })
+    await readyCard.click()
+    await expect(readyCard).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
+    await expect(titles()).toHaveText([toClose.title, toSendBack.title])
+  })
+
+  await test.step('close one with a note', async () => {
+    await titles().first().click()
+    await expect(finishing).toContainText('The engineer has resolved this.')
+    await finishing.getByRole('button', { name: 'Close ticket…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Close ticket' })
+    await dialog.getByRole('textbox', { name: 'Closing note' }).fill('Confirmed with Dana')
+    await dialog.getByRole('button', { name: 'Close ticket' }).click()
+
+    await expect(finishing).toContainText('Ticket closed.')
+    await expect(finishing).toContainText('This ticket is closed.')
+    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toContainText('Closed (current status)')
+    await expect(page.getByRole('region', { name: 'Status history' })).toContainText('Confirmed with Dana')
+
+    const history = await (await request.get(`/api/core/tickets/${toClose.ticket_id}/history`, {
+      headers: await signInViaApi(request, employee.email),
+    })).json()
+    expect([history.at(-1).to_status, history.at(-1).changed_by_role, history.at(-1).reason]).toEqual([
+      'closed', 'admin', 'Confirmed with Dana',
+    ])
+  })
+
+  await test.step('send the other back to its engineer', async () => {
+    await page.goto(`/admin/tickets/${toSendBack.ticket_id}`)
+    await finishing.getByRole('button', { name: 'Send back…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Send back to the engineer' })
+    await dialog.getByRole('textbox', { name: /What's still wrong/ }).fill('Still rattles at night')
+    await dialog.getByRole('button', { name: 'Send back to the engineer' }).click()
+
+    await expect(finishing).toContainText(`Sent back to ${engineer.full_name}.`)
+    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toContainText('In Progress (current status)')
+
+    const queue = await (await request.get('/api/core/engineer/tickets?status=in_progress', { headers: engineerHeaders })).json()
+    expect(queue.map((t) => t.ticket_id)).toEqual([toSendBack.ticket_id])
+  })
+
+  await test.step('the dashboard counts the close', async () => {
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Dashboard' }).click()
+    await expect(numbers.getByRole('button', { name: /^Closed \(7 days\): [1-9]\d*/ })).toBeVisible()
+  })
+})
+
 test('employees cannot open the admin pages', async ({ page, request }) => {
   const { lights } = await seedTickets(request)
   const employee = await registerViaApi(request, { name: 'Curious Employee' })

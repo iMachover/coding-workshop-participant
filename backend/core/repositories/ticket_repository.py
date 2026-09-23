@@ -146,6 +146,34 @@ def list_all(
     ).fetchall()
 
 
+def count_metrics(conn: psycopg.Connection) -> dict[str, Any]:
+    """Return the admin dashboard's headline counts in one row.
+
+    "Active" means not closed, the same as the ticket list's `view=active`, so each count
+    matches what its filter shows. Closes in the last 7 days come from the status history,
+    since tickets don't store when they were closed.
+    """
+    return conn.execute(
+        """
+        SELECT
+            count(*) FILTER (WHERE status <> 'closed' AND assigned_to_user_id IS NULL) AS unassigned,
+            count(*) FILTER (WHERE status = 'open') AS open,
+            count(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+            count(*) FILTER (WHERE status = 'blocked') AS blocked,
+            count(*) FILTER (WHERE status = 'resolved') AS resolved,
+            count(*) FILTER (WHERE status <> 'closed' AND priority = 'P1') AS active_p1,
+            count(*) FILTER (WHERE status <> 'closed' AND escalation_requested) AS escalated,
+            (
+                SELECT count(DISTINCT h.ticket_id)
+                FROM ticket_status_history h
+                JOIN tickets closed ON closed.ticket_id = h.ticket_id AND closed.status = 'closed'
+                WHERE h.to_status = 'closed' AND h.changed_at >= now() - interval '7 days'
+            ) AS closed_last_7_days
+        FROM tickets
+        """
+    ).fetchone()
+
+
 def get_admin_detail(conn: psycopg.Connection, ticket_id: int) -> dict[str, Any] | None:
     """Return one ticket as get_detail does, plus priority and the requester's contact details."""
     return conn.execute(

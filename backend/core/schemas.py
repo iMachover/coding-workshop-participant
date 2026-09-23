@@ -327,6 +327,37 @@ class EngineerWorkload(BaseModel):
     p1_count: int
 
 
+class AdminStatusChangeRequest(BaseModel):
+    """A Facility Admin finishing with a resolved ticket: close it, or send it back to its engineer.
+
+    Sending back needs a reason (what's still wrong), which the engineer and the employee
+    see in the history. A closing note is optional.
+    """
+
+    status: Literal["closed", "in_progress"]
+    reason: Annotated[TrimmedText, StringConstraints(max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def reason_to_send_back(self) -> Self:
+        """The engineer needs to know why the ticket came back."""
+        if self.status == "in_progress" and self.reason is None:
+            raise ValueError("A reason is required to send a ticket back")
+        return self
+
+
+class AdminMetrics(BaseModel):
+    """Headline counts for the admin dashboard. "Active" means not closed, as in the ticket filters."""
+
+    unassigned: int
+    open: int
+    in_progress: int
+    blocked: int
+    resolved: int
+    active_p1: int
+    escalated: int
+    closed_last_7_days: int
+
+
 # --- Engineer -------------------------------------------------------------------
 # Engineers work their tickets with the same staff views as admins (AdminTicketListItem,
 # AdminTicketDetail): priority and the requester's contact details included.

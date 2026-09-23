@@ -12,7 +12,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Auth](#auth): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
-- [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning, people and roles
+- [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning, people and roles, closing or sending back resolved tickets, dashboard metrics
 - [Engineer](#engineer): my queue (filters, triage order), ticket details, status history, notes (list/add), status changes (start, block, unblock, resolve, reopen)
 - [Suggested test run](#suggested-test-run)
 
@@ -28,7 +28,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer) with **94 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer, Admin - closing) with **110 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -48,6 +48,8 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `acknowledgedAt` | Assign ticket | Checking a reassignment keeps the first acknowledgement |
 | `otherUserId` | List people - employee by email | Promoting the second user and moving them back; the Engineer folder's engineer |
 | `engineerAccessToken` | Login - engineer | The Engineer folder's `Authorization: Bearer` header |
+| `closeTicketId` | Setup - the employee reports another ticket | The Admin - closing folder's own ticket |
+| `closedBefore` | Metrics - one ready to close | Checking the close shows up in `closed_last_7_days` |
 
 A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
 
@@ -743,7 +745,9 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 
 ## Admin
 
-Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). Admins can [assign tickets](#assign-or-reassign-a-ticket) to engineers and [move people between employee and engineer](#change-someones-role); closing and admin notes come later.
+Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). Admins can [assign tickets](#assign-or-reassign-a-ticket) to engineers and [move people between employee and engineer](#change-someones-role), and [close resolved tickets or send them back](#close-or-send-back-a-resolved-ticket). Admin notes aren't built.
+
+The **Admin - closing** folder runs after the Engineer folder, with its own ticket: the employee reports it, the admin assigns it to the Engineer folder's engineer, and it goes through start, resolve, send back, resolve again and close.
 
 In the collection, the Admin folder's Authorization tab is `Bearer {{adminAccessToken}}`, saved by **Login - admin**. Create the admin account first ([Setup step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)).
 
@@ -1169,6 +1173,114 @@ The change **signs that person out**: their current token no longer matches thei
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
 | 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
 
+### Close or send back a resolved ticket
+
+| | |
+|---|---|
+| **Method** | `POST` |
+| **URL** | `{{baseUrl}}/admin/tickets/:ticket_id/status` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Request body**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `status` | string | yes | `closed` (close it) or `in_progress` (send it back to its engineer) |
+| `reason` | string | to send back | Trimmed; 1–500 characters. What's still wrong when sending back; an optional note when closing. |
+
+```json
+{ "status": "in_progress", "reason": "Two lights still flicker" }
+```
+
+What it changes, in one transaction:
+
+- **Close:** `status` → `closed`. `resolved_at` is kept. Closed is final: no more notes, status changes or assignments.
+- **Send back:** `status` → `in_progress` with the **same engineer**, and `resolved_at` is cleared. The engineer sees it in their queue again.
+- Either way, a status history row with the admin as `changed_by` and the reason. The employee and the engineer see it.
+
+**Expected response: `200 OK`.** The updated ticket, in the [Get any ticket (admin)](#get-any-ticket-admin) shape. After closing:
+
+```json
+{
+  "ticket_id": 1,
+  "title": "Lobby lights out",
+  "short_description": "Whole lobby is dark",
+  "description": "No lights in the lobby.",
+  "category": "electrical",
+  "urgency": "high",
+  "affected_scope": "building",
+  "status": "closed",
+  "building_id": 1,
+  "floor_id": null,
+  "seat_id": null,
+  "created_by_user_id": 4,
+  "assigned_to_user_id": 2,
+  "escalation_requested": false,
+  "escalation_reason": null,
+  "blocked_reason": null,
+  "created_at": "2026-09-23T18:14:04.962764-04:00",
+  "updated_at": "2026-09-23T18:14:06.108748-04:00",
+  "acknowledged_at": "2026-09-23T18:14:04.992245-04:00",
+  "assigned_at": "2026-09-23T18:14:04.992245-04:00",
+  "resolved_at": "2026-09-23T18:14:06.089514-04:00",
+  "building_name": "Building A",
+  "floor_number": null,
+  "seat_number": null,
+  "assigned_to_name": "Sam Tech",
+  "priority": "P1",
+  "created_by_name": "Jane Doe",
+  "created_by_email": "jane.doe@acme.inc",
+  "created_by_phone": null
+}
+```
+
+**Errors** (checked in this order)
+
+| Status | When | Body |
+|---|---|---|
+| 404 | Ticket doesn't exist | `{"detail":"Ticket not found"}` |
+| 409 | Already closed | `{"detail":"This ticket is already closed"}` |
+| 409 | Not resolved yet (open, in progress, blocked) | `{"detail":"Only resolved tickets can be closed"}` / `{"detail":"Only resolved tickets can be sent back"}` |
+| 409 | Sending back, but its engineer has since been made an employee (resolved tickets can't be reassigned) | `{"detail":"Sam Tech is no longer an engineer, so it can't go back to them. Close it, or make them an engineer again."}` |
+| 422 | Sending back without a reason (or a blank one) | `loc: ["body"]`, `msg: "Value error, A reason is required to send a ticket back"` |
+| 422 | `status` is anything else, or `reason` is over 500 characters | `loc: ["body","status"]` / `["body","reason"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+### Dashboard metrics
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/metrics` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+
+**Expected response: `200 OK`.** Headline counts. "Active" means not closed, the same as [List all tickets](#list-all-tickets)' `view=active`, so each count matches the list you get with its filter:
+
+| Key | Counts | Same as |
+|---|---|---|
+| `unassigned` | Active tickets with no engineer | `?assignment=unassigned&view=active` |
+| `open`, `in_progress`, `blocked`, `resolved` | Tickets in that status | `?status=…` |
+| `active_p1` | Active P1 tickets | `?priority=P1&view=active` |
+| `escalated` | Active tickets the employee escalated | `?escalated=true&view=active` |
+| `closed_last_7_days` | Tickets closed in the last 7 days (from the status history, since tickets don't store a close time) | |
+
+```json
+{
+  "unassigned": 0,
+  "open": 0,
+  "in_progress": 0,
+  "blocked": 0,
+  "resolved": 0,
+  "active_p1": 0,
+  "escalated": 0,
+  "closed_last_7_days": 1
+}
+```
+
+**Errors:** 401 (missing, invalid or expired token, see [above](#errors-any-route-can-return)), 403 (employee or engineer).
+
 ---
 
 ## Engineer
@@ -1512,3 +1624,10 @@ What it changes, all in one transaction:
 | 51 | `{"status":"closed"}` | 422 (closing is for admins) |
 | 52 | `GET /engineer/tickets/{{ticketId}}/history` | Every move in order, each with its reason |
 | 53 | As the admin, reassign `{{ticketId}}` to another engineer; then `GET /engineer/tickets/{{ticketId}}` as the engineer | 200, then 404 |
+| 54 | As the employee, report another ticket; as the admin, assign it to the engineer; as the engineer, start it | 201, 200, 200 |
+| 55 | As the admin, `POST /admin/tickets/<id>/status` with `{"status":"closed"}` | 409 `Only resolved tickets can be closed` |
+| 56 | As the engineer, resolve it; as the admin, `GET /admin/metrics` | 200; `resolved` is at least 1 |
+| 57 | Send it back: `{"status":"in_progress"}` without a reason, then with one | 422, then 200: back to the same engineer, `resolved_at` cleared |
+| 58 | As the engineer, resolve it again; as the admin, `{"status":"closed","reason":"..."}` | 200, 200 `status: "closed"` |
+| 59 | Close it again; as the engineer, try to change it | 409, 409 |
+| 60 | As the employee, `GET /tickets/<id>/history`; as the admin, `GET /admin/metrics` | Last row is the admin's close with the note; `closed_last_7_days` went up by 1 |

@@ -4,10 +4,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from deps import IdPath, require_role
+from deps import AdminUser, IdPath, require_role
 from schemas import (
     AdminTicketDetail,
     AdminTicketFilters,
+    AdminMetrics,
+    AdminStatusChangeRequest,
     AdminTicketListItem,
     AdminUserResponse,
     AssignmentRequest,
@@ -56,6 +58,21 @@ def assign_ticket(ticket_id: IdPath, body: AssignmentRequest) -> dict[str, Any]:
     engineer it already has, return 409; a user who isn't an engineer returns 400.
     """
     return admin_ticket_service.assign_ticket(ticket_id, body.engineer_id)
+
+
+@router.post("/tickets/{ticket_id}/status", response_model=AdminTicketDetail)
+def finish_resolved(ticket_id: IdPath, body: AdminStatusChangeRequest, user: AdminUser) -> dict[str, Any]:
+    """Close a resolved ticket (optional note), or send it back to its engineer (reason required).
+
+    Anything but a resolved ticket returns 409. Returns the updated ticket.
+    """
+    return admin_ticket_service.finish_resolved(user["user_id"], ticket_id, body.status, body.reason)
+
+
+@router.get("/metrics", response_model=AdminMetrics)
+def get_metrics() -> dict[str, Any]:
+    """Headline counts for the dashboard: unassigned, by status, active P1s, escalations, recent closes."""
+    return admin_ticket_service.get_metrics()
 
 
 @router.get("/engineers", response_model=list[EngineerWorkload])

@@ -1,12 +1,15 @@
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
+import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
 import Skeleton from '@mui/material/Skeleton'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Link as RouterLink, useParams } from 'react-router'
 
+import FinishTicket from '../components/admin/FinishTicket'
 import TicketAssignment from '../components/admin/TicketAssignment'
 import BackLink from '../components/BackLink'
 import ErrorState from '../components/ErrorState'
@@ -48,8 +51,8 @@ function NotFound() {
 
 /**
  * Any ticket, as a Facility Admin sees it: priority, where it is in the workflow and how
- * it got there, its details, who owns it (and assigning it), who reported it and how to
- * reach them, and every note. Closing comes in a later slice.
+ * it got there (and closing or sending back a resolved ticket), its details, who owns it
+ * (and assigning it), who reported it and how to reach them, and every note.
  */
 function AdminTicketDetailsPage() {
   const { ticketId } = useParams()
@@ -80,8 +83,14 @@ function AdminTicketDetailsPage() {
 
   const t = ticket.data
   // The new engineer and dates show in the facts, and the engineers' loads have changed.
-  const refresh = () => {
+  const refreshAfterAssign = () => {
     ticket.reload()
+    engineers.reload()
+  }
+  // Closing or sending back moves the workflow and the history, and the engineer's load.
+  const refreshAfterFinish = () => {
+    ticket.reload()
+    history.reload()
     engineers.reload()
   }
 
@@ -92,6 +101,10 @@ function AdminTicketDetailsPage() {
 
       <Panel title="Progress">
         <TicketWorkflow status={t.status} blockedReason={t.blocked_reason} />
+        <Divider sx={{ my: 3 }} />
+        <Box component="section" aria-label="Finish ticket">
+          <FinishTicket ticketId={t.ticket_id} status={t.status} onFinished={refreshAfterFinish} />
+        </Box>
       </Panel>
 
       <Grid container spacing={3}>
@@ -104,7 +117,7 @@ function AdminTicketDetailsPage() {
         <Grid size={{ xs: 12, md: 5 }}>
           <Stack spacing={3}>
             <Panel title="Assignment">
-              <TicketAssignment ticket={t} engineers={engineers} onAssigned={refresh} />
+              <TicketAssignment ticket={t} engineers={engineers} onAssigned={refreshAfterAssign} />
             </Panel>
             <Panel title="Requester">
               <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />

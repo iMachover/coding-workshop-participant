@@ -39,6 +39,8 @@ ADMIN_ONLY = [
     ("GET", "/admin/tickets/{ticket_id}/notes", None),
     ("GET", "/admin/tickets/{ticket_id}/history", None),
     ("PUT", "/admin/tickets/{ticket_id}/assignment", {"engineer_id": 1}),
+    ("POST", "/admin/tickets/{ticket_id}/status", {"status": "closed"}),
+    ("GET", "/admin/metrics", None),
     ("GET", "/admin/engineers", None),
     ("GET", "/admin/users", None),
     ("PUT", "/admin/users/{user_id}/role", {"role": "engineer"}),

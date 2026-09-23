@@ -1,10 +1,11 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
 import {
   assignTicket,
+  finishTicket,
   getTicket,
   listAllTickets,
   listTicketHistory,
@@ -22,6 +23,8 @@ vi.mock('../services/adminTicketService', () => ({
   listTicketHistory: vi.fn(),
   listAllTickets: vi.fn(),
   assignTicket: vi.fn(),
+  finishTicket: vi.fn(),
+  getMetrics: vi.fn().mockResolvedValue({ unassigned: 0, open: 0, in_progress: 0, blocked: 0, resolved: 0, active_p1: 0, escalated: 0, closed_last_7_days: 0 }),
 }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
@@ -65,6 +68,7 @@ beforeEach(() => {
   vi.mocked(listBuildings).mockReset().mockResolvedValue([])
   vi.mocked(listEngineers).mockReset().mockResolvedValue(ENGINEERS)
   vi.mocked(assignTicket).mockReset()
+  vi.mocked(finishTicket).mockReset()
 })
 
 describe('AdminTicketDetailsPage: loading and errors', () => {
@@ -279,5 +283,100 @@ describe('AdminTicketDetailsPage: assignment', () => {
     renderPage()
     await heading()
     expect(await within(assignment()).findByText(/No engineers yet/)).toBeInTheDocument()
+  })
+})
+
+describe('AdminTicketDetailsPage: closing and sending back', () => {
+  const finishing = () => screen.getByRole('region', { name: 'Finish ticket' })
+  const RESOLVED = { ...TICKET, status: 'resolved', assigned_to_user_id: 4, assigned_to_name: 'Sam Tech', resolved_at: '2026-09-22T12:00:00-04:00' }
+
+  it.each([
+    ['open', "The engineer hasn't resolved this yet. You can close it once they have."],
+    ['blocked', "The engineer hasn't resolved this yet. You can close it once they have."],
+    ['closed', 'This ticket is closed.'],
+  ])('only offers to finish a resolved ticket (%s)', async (status, message) => {
+    vi.mocked(getTicket).mockResolvedValue({ ...TICKET, status })
+    renderPage()
+    await heading()
+    expect(finishing()).toHaveTextContent(message)
+    expect(within(finishing()).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('closes with an optional note, then refreshes the ticket, history and loads', async () => {
+    vi.mocked(getTicket).mockResolvedValue(RESOLVED)
+    vi.mocked(finishTicket).mockResolvedValue({ ...RESOLVED, status: 'closed' })
+    const user = renderPage()
+    await heading()
+    expect(finishing()).toHaveTextContent("The engineer has resolved this. Close it, or send it back if the problem isn't fixed.")
+    vi.mocked(getTicket).mockResolvedValue({ ...RESOLVED, status: 'closed' })
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Close ticket…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Close ticket' })
+    expect(within(dialog).getByRole('textbox', { name: 'Closing note' })).not.toBeRequired()
+    await user.click(within(dialog).getByRole('button', { name: 'Close ticket' }))
+
+    expect(finishTicket).toHaveBeenCalledWith(1, 'closed', '')
+    expect(await within(finishing()).findByText('Ticket closed.')).toBeInTheDocument()
+    expect(within(finishing()).getByText('This ticket is closed.')).toBeInTheDocument()
+    expect(getTicket).toHaveBeenCalledTimes(2)
+    expect(listTicketHistory).toHaveBeenCalledTimes(2)
+    expect(listEngineers).toHaveBeenCalledTimes(2)
+  })
+
+  it('needs to say what\'s still wrong before sending back', async () => {
+    vi.mocked(getTicket).mockResolvedValue(RESOLVED)
+    vi.mocked(finishTicket).mockResolvedValue({ ...RESOLVED, status: 'in_progress', resolved_at: null })
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Send back…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Send back to the engineer' })
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to the engineer' }))
+    expect(within(dialog).getByText('Write a reason first.')).toBeInTheDocument()
+    expect(finishTicket).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByRole('textbox', { name: /What's still wrong\?/ }), 'Still flickers')
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to the engineer' }))
+
+    expect(finishTicket).toHaveBeenCalledWith(1, 'in_progress', 'Still flickers')
+    expect(await within(finishing()).findByText('Sent back to Sam Tech.')).toBeInTheDocument()
+  })
+
+  it('keeps the dialog open with the API\'s reason, and cancels cleanly', async () => {
+    vi.mocked(getTicket).mockResolvedValue(RESOLVED)
+    vi.mocked(finishTicket)
+      .mockRejectedValueOnce(new ApiError("Sam Tech is no longer an engineer, so it can't go back to them.", { status: 409 }))
+      .mockRejectedValueOnce(new TypeError('boom'))
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Send back…' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'Still flickers')
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to the engineer' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Sam Tech is no longer an engineer')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to the engineer' }))
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.'))
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Close ticket…' }))
+    expect(within(screen.getByRole('dialog')).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('dismisses the confirmation', async () => {
+    vi.mocked(getTicket).mockResolvedValue(RESOLVED)
+    vi.mocked(finishTicket).mockResolvedValue({ ...RESOLVED, status: 'closed' })
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Close ticket…' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close ticket' }))
+    await within(finishing()).findByText('Ticket closed.')
+
+    await user.click(within(finishing()).getByRole('button', { name: 'Close' }))
+    expect(within(finishing()).queryByText('Ticket closed.')).not.toBeInTheDocument()
   })
 })

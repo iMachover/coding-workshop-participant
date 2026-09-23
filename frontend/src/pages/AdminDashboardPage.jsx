@@ -8,14 +8,17 @@ import { useSearchParams } from 'react-router'
 
 import AdminTicketFilters from '../components/admin/AdminTicketFilters'
 import EngineerWorkload from '../components/admin/EngineerWorkload'
+import MetricCards from '../components/admin/MetricCards'
 import UnassignedQueue from '../components/admin/UnassignedQueue'
 import TicketListSection from '../components/dashboard/TicketListSection'
 import StaffTicketList from '../components/tickets/StaffTicketList'
 import useAllTickets from '../hooks/useAllTickets'
 import useApiData from '../hooks/useApiData'
 import useDebouncedValue from '../hooks/useDebouncedValue'
+import { getMetrics } from '../services/adminTicketService'
 import { listEngineers } from '../services/adminUserService'
 import { listBuildings } from '../services/locationService'
+import { METRIC_CARDS, selectedMetric } from '../utils/adminMetrics'
 
 const DEFAULT_FILTERS = {
   view: 'active',
@@ -55,13 +58,15 @@ function toQuery(filters, search) {
 }
 
 /**
- * Facility Admin home: the unassigned tickets that need an engineer (assignable in
- * place), each engineer's workload, then every ticket with search and filters.
+ * Facility Admin home: headline counts (each one a shortcut to its tickets), the
+ * unassigned tickets that need an engineer (assignable in place), each engineer's
+ * workload, then every ticket with search and filters.
  * Priority shows everywhere here. `?engineer=<id>` opens it filtered to that engineer
  * (the People page links here that way).
  */
 function AdminDashboardPage() {
   const [searchParams] = useSearchParams()
+  const metrics = useApiData(getMetrics)
   const queue = useAllTickets(UNASSIGNED)
   const engineers = useApiData(listEngineers)
   const buildings = useApiData(listBuildings)
@@ -82,6 +87,15 @@ function AdminDashboardPage() {
     queue.reload()
     engineers.reload()
     list.reload()
+    metrics.reload()
+  }
+
+  // A metric card shows its tickets in All tickets; choosing it again goes back to the defaults.
+  const handleSelectMetric = (key) => {
+    const card = METRIC_CARDS.find((c) => c.key === key)
+    const selected = selectedMetric(filters, DEFAULT_FILTERS) === key
+    setFilters(selected ? DEFAULT_FILTERS : { ...DEFAULT_FILTERS, ...card.filters })
+    document.getElementById('all-tickets-title')?.scrollIntoView?.({ behavior: 'smooth' })
   }
 
   // Choosing an engineer shows only their tickets; choosing them again clears that.
@@ -98,6 +112,12 @@ function AdminDashboardPage() {
         </Typography>
         <Typography color="text.secondary">Triage new tickets and keep an eye on everything open.</Typography>
       </Box>
+
+      <MetricCards
+        metrics={metrics}
+        selected={selectedMetric(filters, DEFAULT_FILTERS)}
+        onSelect={handleSelectMetric}
+      />
 
       <UnassignedQueue queue={queue} engineers={engineers} onAssigned={handleAssigned} />
 

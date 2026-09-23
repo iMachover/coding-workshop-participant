@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { api } from './apiClient'
 import {
   assignTicket,
+  finishTicket,
+  getMetrics,
   getTicket,
   listAllTickets,
   listTicketHistory,
@@ -44,5 +46,32 @@ describe('adminTicketService', () => {
     await expect(assignTicket('7', '4')).resolves.toEqual({ ticket_id: 7 })
 
     expect(put).toHaveBeenCalledWith('/admin/tickets/7/assignment', { engineer_id: 4 })
+  })
+
+  it('closes or sends back, sending a trimmed reason only when there is one', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ ticket_id: 7 })
+
+    await finishTicket('7', 'in_progress', '  Still flickers  ')
+    await finishTicket(7, 'closed', '  ')
+    await finishTicket(7, 'closed')
+
+    expect(post.mock.calls).toEqual([
+      ['/admin/tickets/7/status', { status: 'in_progress', reason: 'Still flickers' }],
+      ['/admin/tickets/7/status', { status: 'closed' }],
+      ['/admin/tickets/7/status', { status: 'closed' }],
+    ])
+  })
+
+  it('reads the dashboard metrics', async () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue({})
+    const { signal } = new AbortController()
+
+    await getMetrics({}, { signal })
+    await getMetrics()
+
+    expect(get.mock.calls).toEqual([
+      ['/admin/metrics', { signal }],
+      ['/admin/metrics', { signal: undefined }],
+    ])
   })
 })

@@ -116,6 +116,14 @@
       "key": "engineerAccessToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "closeTicketId",
+      "value": ""
+    },
+    {
+      "key": "closedBefore",
+      "value": ""
     }
   ],
   "item": [
@@ -4314,6 +4322,809 @@
                 "exec": [
                   "pm.test('Status is 404', () => pm.response.to.have.status(404));",
                   "pm.test('Looks like a missing ticket', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - closing",
+      "description": "Facility Admins finishing resolved tickets (close, or send back to the engineer) and the dashboard's counts. Uses its own ticket and the Engineer folder's engineer, so it needs the admin variables and runs after the Engineer folder.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{adminAccessToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Needs the admin, and the engineer the Engineer folder signed in.",
+              "const missing = ['adminAccessToken', 'engineerAccessToken'].filter((v) => !pm.collectionVariables.get(v));",
+              "if (missing.length) {",
+              "  console.warn(`Skipped \"${pm.info.requestName}\": no ${missing.join(' or ')}.`);",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Setup - the employee reports another ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": "Uses the employee's token. This folder's own ticket, so closing it doesn't disturb the others.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Desk lamp flickers\",\n  \"short_description\": \"Flickers all day\",\n  \"description\": \"The lamp at my desk flickers constantly.\",\n  \"category\": \"electrical\",\n  \"urgency\": \"medium\",\n  \"affected_scope\": \"me\",\n  \"building_id\": {{buildingId}},\n  \"floor_id\": {{floorId}},\n  \"seat_id\": {{seatId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('closeTicketId', pm.response.json().ticket_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - assign it to the engineer (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "assignment"
+              ]
+            },
+            "description": "The engineer is the collection's second user, promoted in the Engineer folder.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"engineer_id\": {{otherUserId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - the engineer starts it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now in_progress', () => pm.expect(pm.response.json().status).to.eql('in_progress'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close - not resolved yet (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "Admins only finish resolved tickets; anything earlier is still the engineer's to work.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Only resolved tickets can be closed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - the engineer resolves it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"reason\": \"Replaced the bulb\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now resolved', () => pm.expect(pm.response.json().status).to.eql('resolved'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Metrics - one ready to close",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "metrics"
+              ]
+            },
+            "description": "Headline counts for the dashboard. 'Active' means not closed, as in the ticket filters."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const metrics = pm.response.json();",
+                  "pm.test('All the counts', () => pm.expect(metrics).to.have.all.keys('unassigned', 'open', 'in_progress', 'blocked', 'resolved', 'active_p1', 'escalated', 'closed_last_7_days'));",
+                  "pm.test('Counts are whole numbers', () => Object.values(metrics).forEach((n) => pm.expect(Number.isInteger(n) && n >= 0).to.be.true));",
+                  "pm.test('At least this ticket is ready to close', () => pm.expect(metrics.resolved).to.be.at.least(1));",
+                  "pm.collectionVariables.set('closedBefore', metrics.closed_last_7_days);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send back - without a reason (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Says a reason is needed', () => pm.expect(pm.response.json().detail[0].msg).to.include('A reason is required to send a ticket back'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send back",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "resolved → in_progress, with the engineer. The reason tells them what's still wrong.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"reason\": \"Still flickers when the heater is on\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now in_progress', () => pm.expect(pm.response.json().status).to.eql('in_progress'));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('resolved_at cleared', () => pm.expect(ticket.resolved_at).to.be.null);",
+                  "pm.test('Back with the same engineer', () => pm.expect(ticket.assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('otherUserId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - the engineer resolves it again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"reason\": \"Replaced the lamp's switch too\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now resolved', () => pm.expect(pm.response.json().status).to.eql('resolved'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "resolved → closed. The note is optional. Closed is final.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\",\n  \"reason\": \"Confirmed with the employee\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Now closed', () => pm.expect(pm.response.json().status).to.eql('closed'));",
+                  "pm.test('Keeps when it was resolved', () => pm.expect(pm.response.json().resolved_at).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close - already closed (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"This ticket is already closed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Closed - the engineer can't change it (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Closed tickets can't change status\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Closed - the employee sees the admin's close",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{closeTicketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{closeTicketId}}",
+                "history"
+              ]
+            },
+            "description": "Uses the employee's token on their own history route.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const last = pm.response.json().slice(-1)[0];",
+                  "pm.test('Ends with the admin closing it, with the note', () => {",
+                  "  pm.expect(last.to_status).to.eql('closed');",
+                  "  pm.expect(last.changed_by_role).to.eql('admin');",
+                  "  pm.expect(last.reason).to.eql('Confirmed with the employee');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Metrics - counts the recent close",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "metrics"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('One more closed this week', () => pm.expect(pm.response.json().closed_last_7_days).to.eql(Number(pm.collectionVariables.get('closedBefore')) + 1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close - unknown ticket (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{missingId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{missingId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Ticket not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close - as an engineer (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{closeTicketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{closeTicketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"You don't have access to this.\"));"
                 ]
               }
             }
