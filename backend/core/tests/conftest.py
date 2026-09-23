@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import db  # noqa: E402
 import security  # noqa: E402
+import tokens  # noqa: E402
 from config import settings  # noqa: E402
 from function import API_PREFIX, app  # noqa: E402
 
@@ -98,16 +99,48 @@ def register(client: TestClient, api: str) -> Callable[..., dict[str, Any]]:
     return _register
 
 
-@pytest.fixture
-def jane(register: Callable[..., dict[str, Any]]) -> Headers:
-    """Headers for a registered employee."""
-    return {"X-User-Id": str(register()["user_id"])}
+def bearer(user: dict[str, Any]) -> Headers:
+    """Authorization headers with a real signed token for this user and role."""
+    token, _ = tokens.create_access_token(user["user_id"], user["role"])
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
-def eve(register: Callable[..., dict[str, Any]]) -> Headers:
-    """Headers for a second employee, to check one can't see the other's tickets."""
-    return {"X-User-Id": str(register("eve@acme.inc", "Eve Other")["user_id"])}
+def user_with_role(
+    register: Callable[..., dict[str, Any]], run_sql: Callable[..., list[dict[str, Any]]]
+) -> Callable[[str], dict[str, Any]]:
+    """Register a user and set their role directly, since the API can't promote anyone yet."""
+
+    def _make(role: str) -> dict[str, Any]:
+        user = register(f"{role}@acme.inc", f"Test {role.title()}")
+        run_sql("UPDATE users SET role = %s WHERE user_id = %s", (role, user["user_id"]))
+        return {**user, "role": role}
+
+    return _make
+
+
+@pytest.fixture
+def jane_user(register: Callable[..., dict[str, Any]]) -> dict[str, Any]:
+    """A registered employee."""
+    return register()
+
+
+@pytest.fixture
+def jane(jane_user: dict[str, Any]) -> Headers:
+    """Headers for jane_user."""
+    return bearer(jane_user)
+
+
+@pytest.fixture
+def eve_user(register: Callable[..., dict[str, Any]]) -> dict[str, Any]:
+    """A second employee, to check one can't see the other's tickets."""
+    return register("eve@acme.inc", "Eve Other")
+
+
+@pytest.fixture
+def eve(eve_user: dict[str, Any]) -> Headers:
+    """Headers for eve_user."""
+    return bearer(eve_user)
 
 
 @pytest.fixture

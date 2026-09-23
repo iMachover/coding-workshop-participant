@@ -73,6 +73,15 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
+class LoginResponse(BaseModel):
+    """A signed access token plus the signed-in user. Send the token as `Authorization: Bearer <token>`."""
+
+    access_token: str
+    token_type: Literal["bearer"]
+    expires_in: int
+    user: UserResponse
+
+
 class BuildingResponse(BaseModel):
     """A building, for the location dropdowns."""
 

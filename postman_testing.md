@@ -228,18 +228,33 @@ Validation errors (422) come from FastAPI and list every problem, with `loc` say
 { "email": "jane.doe@acme.inc", "password": "hunter2hunter2" }
 ```
 
-**Expected response: `200 OK`.** This is the same user object as Register. Save `user_id` into `{{userId}}`.
+**Expected response: `200 OK`.** A signed access token (JWT, HS256) plus the same user object as Register. The collection saves `access_token` into `{{accessToken}}` and `user.user_id` into `{{userId}}`.
 
 ```json
 {
-  "user_id": 1,
-  "email": "jane.doe@acme.inc",
-  "full_name": "Jane Doe",
-  "phone_number": "555-0101",
-  "role": "employee",
-  "created_at": "2026-09-22T20:21:06.105106-04:00"
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwicm9sZSI6ImVtcGxveWVlIiwi...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "user": {
+    "user_id": 1,
+    "email": "jane.doe@acme.inc",
+    "full_name": "Jane Doe",
+    "phone_number": "555-0101",
+    "role": "employee",
+    "created_at": "2026-09-22T20:21:06.105106-04:00"
+  }
 }
 ```
+
+| Field | Meaning |
+|---|---|
+| `access_token` | Send it as `Authorization: Bearer <token>`. It is signed with the user id and role from the database at login. |
+| `token_type` | Always `bearer` |
+| `expires_in` | Seconds until the token expires (1 hour). After that, sign in again. |
+
+The token's payload holds only `sub` (user id), `role`, `iat` (issued at), `exp` (expires at) and `iss` (`facilities-helpdesk`): no password, email or name. Paste a token into [jwt.io](https://jwt.io) to see its claims. It's signed, not encrypted, so anyone can read it but nobody can change it without the secret.
+
+> **Transition note:** protected routes still read `X-User-Id` until the next step switches them to the token.
 
 **Errors**
 

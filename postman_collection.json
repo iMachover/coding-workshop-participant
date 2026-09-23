@@ -62,6 +62,11 @@
       "value": ""
     },
     {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "otherUserId",
       "value": ""
     },
@@ -437,7 +442,7 @@
                 "login"
               ]
             },
-            "description": "Returns the user. Its user_id is saved to {{userId}} and sent as X-User-Id on later requests.",
+            "description": "Returns a signed access token (1 hour) plus the user. Saves `{{accessToken}}` and `{{userId}}`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
@@ -459,11 +464,22 @@
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
                   "",
-                  "pm.test('User shape, no password', () => {",
-                  "  const user = pm.response.json();",
-                  "  pm.expect(user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at');",
+                  "const body = pm.response.json();",
+                  "pm.test('Token and user, nothing else', () => pm.expect(body).to.have.all.keys('access_token', 'token_type', 'expires_in', 'user'));",
+                  "pm.test('Bearer token that lasts an hour', () => {",
+                  "  pm.expect(body.token_type).to.eql('bearer');",
+                  "  pm.expect(body.expires_in).to.eql(3600);",
+                  "  pm.expect(body.access_token.split('.')).to.have.lengthOf(3);",
                   "});",
-                  "pm.collectionVariables.set('userId', pm.response.json().user_id);"
+                  "pm.test('User shape, no password', () => pm.expect(body.user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at'));",
+                  "pm.test('Token holds only id, role and timing', () => {",
+                  "  const claims = JSON.parse(atob(body.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "  pm.expect(claims).to.have.all.keys('sub', 'role', 'iat', 'exp', 'iss');",
+                  "  pm.expect(claims.sub).to.eql(String(body.user.user_id));",
+                  "  pm.expect(claims.role).to.eql(body.user.role);",
+                  "});",
+                  "pm.collectionVariables.set('userId', body.user.user_id);",
+                  "pm.collectionVariables.set('accessToken', body.access_token);"
                 ]
               }
             }

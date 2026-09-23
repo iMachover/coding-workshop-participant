@@ -4,10 +4,16 @@ import { api } from './apiClient'
 import { login, register } from './authService'
 
 describe('authService.login', () => {
-  it('posts the trimmed email and the password as typed', async () => {
-    const post = vi.spyOn(api, 'post').mockResolvedValue({ user_id: 1 })
+  it('posts the trimmed email and the password as typed, and returns the user', async () => {
+    const user = { user_id: 1, full_name: 'Jane' }
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      access_token: 'header.payload.signature',
+      token_type: 'bearer',
+      expires_in: 3600,
+      user,
+    })
 
-    await login({ email: ' jane@acme.inc ', password: ' secret ' })
+    await expect(login({ email: ' jane@acme.inc ', password: ' secret ' })).resolves.toEqual(user)
 
     expect(post).toHaveBeenCalledWith('/auth/login', { email: 'jane@acme.inc', password: ' secret ' })
   })

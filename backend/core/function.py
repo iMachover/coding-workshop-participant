@@ -12,6 +12,7 @@ from errors import (
     AppError,
     BadRequestError,
     ConflictError,
+    ForbiddenError,
     NotFoundError,
     UnauthorizedError,
 )
@@ -27,6 +28,7 @@ API_PREFIX = "/api/core"
 ERROR_STATUS: dict[type[AppError], int] = {
     BadRequestError: 400,
     UnauthorizedError: 401,
+    ForbiddenError: 403,
     NotFoundError: 404,
     ConflictError: 409,
 }

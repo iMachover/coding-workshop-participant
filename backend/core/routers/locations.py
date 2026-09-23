@@ -1,4 +1,4 @@
-"""Location lookups for the create-ticket form. Signed-in users only."""
+"""Location lookups for the create-ticket form. Any signed-in role."""
 
 from typing import Any
 

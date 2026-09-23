@@ -15,19 +15,19 @@ import pytest
     ],
 )
 def test_create_stores_priority_from_scope_but_does_not_return_it(
-    create_ticket, jane, run_sql, scope, location, priority
+    create_ticket, jane, jane_user, run_sql, scope, location, priority
 ) -> None:
     ticket = create_ticket(jane, affected_scope=scope, **location)
     stored = run_sql("SELECT priority FROM tickets WHERE ticket_id = %s", (ticket["ticket_id"],))
     assert stored[0]["priority"] == priority
     assert "priority" not in ticket
     assert ticket["status"] == "open"
-    assert ticket["created_by_user_id"] == int(jane["X-User-Id"])
+    assert ticket["created_by_user_id"] == jane_user["user_id"]
     assert ticket["escalation_requested"] is False
     assert ticket["assigned_to_user_id"] is None
 
 
-def test_create_ignores_server_owned_fields(create_ticket, jane, eve, run_sql) -> None:
+def test_create_ignores_server_owned_fields(create_ticket, jane, jane_user, eve_user, run_sql) -> None:
     ticket = create_ticket(
         jane,
         affected_scope="building",
@@ -35,11 +35,11 @@ def test_create_ignores_server_owned_fields(create_ticket, jane, eve, run_sql) -
         seat_id=None,
         status="closed",
         priority="P3",
-        created_by_user_id=int(eve["X-User-Id"]),
+        created_by_user_id=eve_user["user_id"],
     )
     stored = run_sql("SELECT priority FROM tickets WHERE ticket_id = %s", (ticket["ticket_id"],))
     assert (ticket["status"], stored[0]["priority"]) == ("open", "P1")
-    assert ticket["created_by_user_id"] == int(jane["X-User-Id"])
+    assert ticket["created_by_user_id"] == jane_user["user_id"]
 
 
 @pytest.mark.parametrize(

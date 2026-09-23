@@ -18,6 +18,10 @@ class UnauthorizedError(AppError):
     """The caller is not identified, or their credentials are wrong."""
 
 
+class ForbiddenError(AppError):
+    """The caller is signed in, but their role may not do this."""
+
+
 class NotFoundError(AppError):
     """The resource does not exist, or the caller may not see it."""
 

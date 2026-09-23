@@ -160,12 +160,13 @@ curl -X POST http://localhost:8000/api/core/auth/register -H 'Content-Type: appl
 # Same email again: 409. Non-acme email or short password: 422.
 ```
 
-Log in. There's no token yet: remember the returned `user_id` and send it as the `X-User-Id` header on later requests.
+Log in. The response has a signed access token (valid for 1 hour) and the user. Until the next step, protected routes still read the `user.user_id` from it as the `X-User-Id` header.
 
 ```sh
 curl -X POST http://localhost:8000/api/core/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"jane.doe@acme.inc","password":"hunter2hunter2"}'
-# 200 {"user_id":1,...}. Wrong email or password: 401 {"detail":"Invalid email or password"}
+# 200 {"access_token":"eyJ...","token_type":"bearer","expires_in":3600,"user":{"user_id":1,...}}
+# Wrong email or password: 401 {"detail":"Invalid email or password"}
 ```
 
 Who am I? Every protected route reads the caller from `X-User-Id`.

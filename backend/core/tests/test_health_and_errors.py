@@ -4,7 +4,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 import db
-from errors import BadRequestError, ConflictError, NotFoundError, UnauthorizedError
+from errors import (
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from function import app
 from services import location_service
 
@@ -30,7 +36,13 @@ def test_health_db_unavailable(client, api, monkeypatch) -> None:
 
 @pytest.mark.parametrize(
     ("error", "status"),
-    [(BadRequestError, 400), (UnauthorizedError, 401), (NotFoundError, 404), (ConflictError, 409)],
+    [
+        (BadRequestError, 400),
+        (UnauthorizedError, 401),
+        (ForbiddenError, 403),
+        (NotFoundError, 404),
+        (ConflictError, 409),
+    ],
 )
 def test_domain_errors_map_to_status_codes(client, api, jane, monkeypatch, error, status) -> None:
     def fail() -> None:
