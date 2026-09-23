@@ -135,7 +135,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 
 ### Manual checks with curl
 
-For every route with its headers, request body, example response and errors, and a Postman setup, see [postman_testing.md](postman_testing.md). The quick curl versions follow. With the backend running, run these in another terminal.
+For every route with its headers, request body, example response and errors, see [postman_testing.md](postman_testing.md). To test every route at once, import [postman_collection.json](postman_collection.json) into Postman and click **Run collection**, or run `npx newman run postman_collection.json`. The quick curl versions follow. With the backend running, run these in another terminal.
 
 Health check:
 

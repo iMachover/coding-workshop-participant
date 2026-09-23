@@ -1,0 +1,1409 @@
+{
+  "info": {
+    "name": "Facilities Helpdesk API (core)",
+    "description": "Every route of the core service. Run the whole collection top to bottom: each request saves the ids the next ones need (userId, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is the dev-only `X-User-Id` header, set once at collection level from `{{userId}}`. Full reference: postman_testing.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-User-Id",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{userId}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response is JSON', () => pm.response.to.be.json);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000/api/core"
+    },
+    {
+      "key": "password",
+      "value": "postman-pass-123"
+    },
+    {
+      "key": "missingId",
+      "value": "2147483647",
+      "description": "Largest valid id; never exists in practice."
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "otherEmail",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "otherUserId",
+      "value": ""
+    },
+    {
+      "key": "buildingId",
+      "value": ""
+    },
+    {
+      "key": "floorId",
+      "value": ""
+    },
+    {
+      "key": "seatId",
+      "value": ""
+    },
+    {
+      "key": "ticketId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness check. No auth."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body', () => pm.expect(pm.response.json()).to.eql({ status: 'ok' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Database health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/db",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "db"
+              ]
+            },
+            "description": "Readiness check. 503 `{\"status\":\"error\",\"db\":\"unavailable\"}` if Postgres is down."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body', () => pm.expect(pm.response.json()).to.eql({ status: 'ok', db: 'ok' }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Creates an employee. Only @acme.inc emails; password 8-128 chars. The pre-request script makes a unique email each run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"full_name\": \"Postman Tester\",\n  \"phone_number\": \"555-0101\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('email', `postman.${Date.now()}@acme.inc`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test('User shape, no password', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at');",
+                  "});",
+                  "",
+                  "pm.test('Role is employee', () => pm.expect(pm.response.json().role).to.eql('employee'));",
+                  "pm.collectionVariables.set('userId', pm.response.json().user_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - duplicate email (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"full_name\": \"Postman Tester\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('An account with this email already exists'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - invalid email and short password (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"someone@gmail.com\",\n  \"full_name\": \"Postman Tester\",\n  \"password\": \"short\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Validation error location', () => {",
+                  "  const locs = pm.response.json().detail.map((e) => e.loc.join('.'));",
+                  "  pm.expect(locs, 'error at body.email').to.include(\"body.email\");",
+                  "  pm.expect(locs, 'error at body.password').to.include(\"body.password\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - second user (for access tests)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "A second employee, used to check that one user can't read another's tickets.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"full_name\": \"Other Tester\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('otherEmail', `postman.other.${Date.now()}@acme.inc`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('otherUserId', pm.response.json().user_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - wrong password (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Invalid email or password'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Returns the user. Its user_id is saved to {{userId}} and sent as X-User-Id on later requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('User shape, no password', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at');",
+                  "});",
+                  "pm.collectionVariables.set('userId', pm.response.json().user_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Returns the user identified by X-User-Id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Is the logged-in user', () => pm.expect(pm.response.json().user_id).to.eql(Number(pm.collectionVariables.get('userId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user - missing header (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Missing or invalid X-User-Id header'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user - unknown user (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                {
+                  "key": "key",
+                  "value": "X-User-Id",
+                  "type": "string"
+                },
+                {
+                  "key": "value",
+                  "value": "{{missingId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "in",
+                  "value": "header",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Unknown user'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Locations",
+      "item": [
+        {
+          "name": "List buildings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const buildings = pm.response.json();",
+                  "pm.test('At least one building', () => pm.expect(buildings).to.be.an('array').that.is.not.empty);",
+                  "pm.test('Building shape', () => pm.expect(buildings[0]).to.have.all.keys('building_id', 'building_name'));",
+                  "pm.collectionVariables.set('buildingId', buildings[0].building_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List floors in a building",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings/{{buildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings",
+                "{{buildingId}}",
+                "floors"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const floors = pm.response.json();",
+                  "pm.test('At least one floor', () => pm.expect(floors).to.be.an('array').that.is.not.empty);",
+                  "pm.test('All in the building', () => floors.forEach((f) => pm.expect(f.building_id).to.eql(Number(pm.collectionVariables.get('buildingId')))));",
+                  "pm.collectionVariables.set('floorId', floors[0].floor_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List seats on a floor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/floors/{{floorId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "floors",
+                "{{floorId}}",
+                "seats"
+              ]
+            },
+            "description": "Seat ids aren't sequential within a floor; always take them from this response."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const seats = pm.response.json();",
+                  "pm.test('At least one seat', () => pm.expect(seats).to.be.an('array').that.is.not.empty);",
+                  "pm.test('All on the floor', () => seats.forEach((s) => pm.expect(s.floor_id).to.eql(Number(pm.collectionVariables.get('floorId')))));",
+                  "pm.collectionVariables.set('seatId', seats[0].seat_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List floors - unknown building (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings/{{missingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings",
+                "{{missingId}}",
+                "floors"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Building not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List seats - unknown floor (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/floors/{{missingId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "floors",
+                "{{missingId}}",
+                "seats"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Floor not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List floors - non-numeric id (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings/abc/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings",
+                "abc",
+                "floors"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Validation error location', () => {",
+                  "  const locs = pm.response.json().detail.map((e) => e.loc.join('.'));",
+                  "  pm.expect(locs, 'error at path.building_id').to.include(\"path.building_id\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "Create ticket - floor scope without floor_id (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Wi-Fi keeps dropping\",\n  \"short_description\": \"Disconnects every few minutes\",\n  \"description\": \"Since this morning my laptop loses Wi-Fi every 5-10 minutes.\",\n  \"category\": \"network\",\n  \"urgency\": \"medium\",\n  \"affected_scope\": \"floor\",\n  \"building_id\": {{buildingId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Scope rule message', () => pm.expect(pm.response.json().detail[0].msg).to.include('Floor-wide issues need a floor_id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create ticket - unknown building (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Wi-Fi keeps dropping\",\n  \"short_description\": \"Disconnects every few minutes\",\n  \"description\": \"Since this morning my laptop loses Wi-Fi every 5-10 minutes.\",\n  \"category\": \"network\",\n  \"urgency\": \"medium\",\n  \"affected_scope\": \"building\",\n  \"building_id\": {{missingId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`Building ${pm.collectionVariables.get('missingId')} does not exist`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": "Scope 'me' needs building, floor and seat. The server sets status=open, the creator and an internal priority (never returned).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Wi-Fi keeps dropping\",\n  \"short_description\": \"Disconnects every few minutes\",\n  \"description\": \"Since this morning my laptop loses Wi-Fi every 5-10 minutes.\",\n  \"category\": \"network\",\n  \"urgency\": \"medium\",\n  \"affected_scope\": \"me\",\n  \"building_id\": {{buildingId}},\n  \"floor_id\": {{floorId}},\n  \"seat_id\": {{seatId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Internal priority is hidden', () => pm.expect(pm.response.json()).to.not.have.property('priority'));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Status is open', () => pm.expect(ticket.status).to.eql('open'));",
+                  "pm.test('Created by the caller', () => pm.expect(ticket.created_by_user_id).to.eql(Number(pm.collectionVariables.get('userId'))));",
+                  "pm.collectionVariables.set('ticketId', ticket.ticket_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?view=active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "Optional filters: view (active|closed), status, urgency, q (text or exact ticket id). Newest update first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tickets = pm.response.json();",
+                  "pm.test('Includes the new ticket', () => pm.expect(tickets.map((t) => t.ticket_id)).to.include(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Internal priority is hidden', () => tickets.forEach((t) => pm.expect(t).to.not.have.property('priority')));",
+                  "pm.test('Nothing closed', () => tickets.forEach((t) => pm.expect(t.status).to.not.eql('closed')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my tickets - search by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?q={{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{ticketId}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Finds the ticket', () => pm.expect(pm.response.json().map((t) => t.ticket_id)).to.include(Number(pm.collectionVariables.get('ticketId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my tickets - priority filter rejected (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?priority=P1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "priority",
+                  "value": "P1"
+                }
+              ]
+            },
+            "description": "Employees can't filter by priority; unknown query params are a 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Validation error location', () => {",
+                  "  const locs = pm.response.json().detail.map((e) => e.loc.join('.'));",
+                  "  pm.expect(locs, 'error at query.priority').to.include(\"query.priority\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Internal priority is hidden', () => pm.expect(pm.response.json()).to.not.have.property('priority'));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Is the ticket', () => pm.expect(ticket.ticket_id).to.eql(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Has location names', () => pm.expect(ticket).to.include.keys('building_name', 'floor_number', 'seat_number', 'assigned_to_name'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket - another user's ticket (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": "Someone else's ticket is 404, not 403, so its existence isn't revealed.",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                {
+                  "key": "key",
+                  "value": "X-User-Id",
+                  "type": "string"
+                },
+                {
+                  "key": "value",
+                  "value": "{{otherUserId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "in",
+                  "value": "header",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket - unknown id (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{missingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{missingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "1-2000 chars. Closed tickets return 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note_text\": \"Thanks, I will be at my desk after 2pm.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const note = pm.response.json();",
+                  "pm.test('Note saved', () => pm.expect(note.note_text).to.eql('Thanks, I will be at my desk after 2pm.'));",
+                  "pm.test('Written by the caller', () => pm.expect(note.author_role).to.eql('employee'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add note - blank text (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note_text\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Validation error location', () => {",
+                  "  const locs = pm.response.json().detail.map((e) => e.loc.join('.'));",
+                  "  pm.expect(locs, 'error at body.note_text').to.include(\"body.note_text\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "Oldest first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has the note', () => pm.expect(pm.response.json().map((n) => n.note_text)).to.include('Thanks, I will be at my desk after 2pm.'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request escalation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/escalation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "escalation"
+              ]
+            },
+            "description": "Once per ticket. Returns the updated ticket. Closed tickets return 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Still dropping after 3 days, I can't join calls.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Internal priority is hidden', () => pm.expect(pm.response.json()).to.not.have.property('priority'));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Escalation recorded', () => {",
+                  "  pm.expect(ticket.escalation_requested).to.eql(true);",
+                  "  pm.expect(ticket.escalation_reason).to.eql(\"Still dropping after 3 days, I can't join calls.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request escalation - again (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/escalation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "escalation"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Asking again.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Escalation has already been requested for this ticket'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong method (405)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 405', () => pm.response.to.have.status(405));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Method Not Allowed'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

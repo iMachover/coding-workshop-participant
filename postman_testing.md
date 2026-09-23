@@ -2,7 +2,7 @@
 
 Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 
-> **Keep this file current.** Every time an API route is added or changed, update its section here with the method, URL, headers/auth, params, request body, expected response and common errors. Routes are defined in [backend/core/routers/](backend/core/routers/).
+> **Keep this file and [postman_collection.json](postman_collection.json) current.** Every time an API route is added or changed, update its section here with the method, URL, headers/auth, params, request body, expected response and common errors, and add or update its request (with tests) in the collection. Routes are defined in [backend/core/routers/](backend/core/routers/).
 
 ## Contents
 
@@ -24,33 +24,34 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 ```
 
-### 2. Create a Postman environment
+### 2. Import the collection
 
-| Variable | Local value | AWS value |
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets) with **32 requests**: every route's success case plus its common errors. Each request has tests.
+
+**Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
+
+| Variable | Set by | Used for |
 |---|---|---|
-| `baseUrl` | `http://localhost:8000/api/core` | `https://<cloudfront-domain>/api/core` (the `VITE_API_URL` in `frontend/.env.local` + `/api/core`) |
-| `userId` | `1` (set after login) | the `user_id` from login |
-| `ticketId` | set after creating a ticket | same |
+| `baseUrl` | You (default `http://localhost:8000/api/core`) | Every URL |
+| `email`, `otherEmail` | Register pre-request scripts (unique per run) | Register/Login |
+| `userId` | Register, then Login | The `X-User-Id` header (collection-level auth) |
+| `otherUserId` | "Register - second user" | Checking you can't read another user's ticket |
+| `buildingId`, `floorId`, `seatId` | The three location lists | Create ticket |
+| `ticketId` | Create ticket | Get / notes / escalation |
+| `password`, `missingId` | Fixed | Login; ids that don't exist (`2147483647`) |
+
+A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `userId` is set.
+
+**Against AWS:** change the collection variable `baseUrl` to `https://<cloudfront-domain>/api/core` (the `VITE_API_URL` in `frontend/.env.local` + `/api/core`). If you use a Postman environment, only put `baseUrl` in it: an environment variable named `userId` or `ticketId` would override the ones the scripts save.
+
+**From the command line** (same tests, no Postman app needed):
+
+```sh
+npx newman run postman_collection.json
+npx newman run postman_collection.json --env-var baseUrl=https://<cloudfront-domain>/api/core
+```
 
 Every URL below is written as `{{baseUrl}}/...`.
-
-### 3. Save the user id automatically after login (optional)
-
-On the **Login** request, add this under **Scripts → Post-response**:
-
-```js
-if (pm.response.code === 200) {
-  pm.environment.set('userId', pm.response.json().user_id);
-}
-```
-
-On **Create ticket**, do the same for `ticketId`:
-
-```js
-if (pm.response.code === 201) {
-  pm.environment.set('ticketId', pm.response.json().ticket_id);
-}
-```
 
 ---
 
@@ -64,7 +65,7 @@ There are no tokens yet. After login, send the returned `user_id` in a header:
 X-User-Id: {{userId}}
 ```
 
-Tip: set it once on the collection (**Collection → Headers**) instead of on every request. Only the health, register and login routes work without it.
+The collection sends it automatically: its **Authorization** tab is type *API Key*, key `X-User-Id`, value `{{userId}}`, added to the header. Requests that need something different (health, register, login, the 401 checks, the other-user check) override it on their own Authorization tab. Only the health, register and login routes work without it.
 
 > ⚠️ This header is a **development shortcut**: anyone can claim any id. It will be replaced by JWT (`Authorization: Bearer <token>`). When that happens, update this section and every **Headers** row below.
 
@@ -650,7 +651,7 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 
 ## Suggested test run
 
-Run these in order. Each step builds on the one before.
+**Run collection** does all of this (and a few more error cases) automatically. The table is the short version, if you'd rather click through by hand. Run the steps in order; each builds on the one before.
 
 | # | Request | Expect |
 |---|---|---|
