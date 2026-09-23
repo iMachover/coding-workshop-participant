@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 # These mirror the CHECK constraints in sql/schema.sql, and Role mirrors the rows seeded
 # into its roles table. Ticket priority (P1-P3) is stored for engineer/admin triage but is
-# deliberately not part of any employee model.
+# deliberately not part of any employee model; only the Admin* models carry it.
 Role = Literal["employee", "engineer", "admin"]
+Priority = Literal["P1", "P2", "P3"]
 Category = Literal[
     "network", "hardware", "printer", "hvac",
     "electrical", "furniture", "building_facilities", "other",
@@ -238,3 +239,47 @@ class TicketDetail(TicketResponse):
     floor_number: int | None
     seat_number: str | None
     assigned_to_name: str | None
+
+
+# --- Facility Admin -----------------------------------------------------------
+
+
+class AdminTicketFilters(BaseModel):
+    """Query parameters for the admin's all-tickets list. All optional; they combine with AND.
+
+    `assignment=unassigned` is the dashboard's "needs an engineer" view. Unknown parameters are a 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: TicketStatus | None = None
+    priority: Priority | None = None
+    urgency: Urgency | None = None
+    category: Category | None = None
+    building_id: DbId | None = None
+    assignment: Literal["unassigned", "assigned"] | None = None
+    assigned_to: DbId | None = None
+    escalated: bool | None = None
+    # Same meaning as the employee list: "active" is everything not closed.
+    view: Literal["active", "closed"] | None = None
+    # Also matches the requester's name or email, which employees' own search doesn't need.
+    q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+
+
+class AdminTicketListItem(TicketListItem):
+    """A row in the admin's all-tickets list: the employee summary plus triage fields."""
+
+    priority: Priority
+    created_by_user_id: int
+    created_by_name: str
+    assigned_to_user_id: int | None
+    assigned_to_name: str | None
+
+
+class AdminTicketDetail(TicketDetail):
+    """A full ticket as a Facility Admin sees it: priority and how to reach the requester."""
+
+    priority: Priority
+    created_by_name: str
+    created_by_email: str
+    created_by_phone: str | None

@@ -95,7 +95,8 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_tokens.py` | Signing and verifying access tokens: expiry, tampering, unsigned tokens, the `JWT_SECRET` rules (no DB) |
 | `test_auth.py`, `test_locations.py` | Register, login, Bearer tokens (missing, invalid, expired, deleted user, changed role), location lookups |
 | `test_roles.py` | The `roles` table: new users get `employee`, unknown roles are rejected, and `schema.sql` moves an older database's `users.role` text into `role_id` |
-| `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); shared routes work for every role |
+| `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); `/admin` is admin-only (403 for employees and engineers); shared routes work for every role |
+| `test_admin_tickets.py` | The admin's all-tickets list: triage order (P1 first, then longest-waiting), every filter and search, 422s; details with priority and requester contact; reading any ticket's notes and history; 404s |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 | `test_status_history.py` | Creating a ticket records it as opened, a reopened ticket keeps every step in order, the table's constraints, and `schema.sql` backfilling tickets made before the history existed |
 
@@ -194,7 +195,7 @@ curl http://localhost:8000/api/core/auth/me -H "Authorization: Bearer $TOKEN"
 | Token malformed, tampered with, or signed with another secret | 401 `Invalid token. Please sign in again.` |
 | Token older than 1 hour | 401 `Your session has expired. Please sign in again.` |
 | The account was deleted, or its role changed since sign-in | 401 `Unknown user` / `Your access has changed. Please sign in again.` |
-| Valid token, but the role may not use the route (engineers and admins on `/tickets`) | 403 `You don't have access to this.` |
+| Valid token, but the role may not use the route (engineers and admins on `/tickets`, employees and engineers on `/admin`) | 403 `You don't have access to this.` |
 
 Locations for the create-ticket dropdowns (Building → Floor → Seat). Any signed-in role may read them.
 
@@ -277,6 +278,55 @@ curl -X POST http://localhost:8000/api/core/tickets/5/escalation -H "Authorizati
 # Already escalated or closed: 409. Blank reason: 422. Not your ticket: 404.
 ```
 
+#### Facility Admin: all tickets
+
+Admins only; `$ADMIN_TOKEN` is an admin's login token. There's no API to promote a user yet, so set their `role_id` in SQL first (see Known limitations).
+
+List every ticket, whoever created it. Sorted for triage: priority first (P1, P2, P3), then the oldest created first. Each row is the employee list row plus `priority`, `created_by_user_id`, `created_by_name`, `assigned_to_user_id` and `assigned_to_name`.
+
+```sh
+curl 'http://localhost:8000/api/core/admin/tickets' -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 [{"ticket_id":3,"title":"Lobby lights out",...,"priority":"P1","created_by_name":"Jane Doe","assigned_to_user_id":null,"assigned_to_name":null},
+#      {"ticket_id":2,"title":"Printer jam",...,"priority":"P2","created_by_name":"Eve Other","assigned_to_user_id":4,"assigned_to_name":"Sam Tech"},...]
+curl 'http://localhost:8000/api/core/admin/tickets?assignment=unassigned' -H "Authorization: Bearer $ADMIN_TOKEN"
+curl 'http://localhost:8000/api/core/admin/tickets?escalated=true&view=active' -H "Authorization: Bearer $ADMIN_TOKEN"
+curl 'http://localhost:8000/api/core/admin/tickets?q=eve%20other' -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+| Query param | Values |
+|---|---|
+| `view` | `active` (everything not closed) or `closed` |
+| `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
+| `priority` | `P1`, `P2`, `P3` |
+| `urgency` | `low`, `medium`, `high` |
+| `category` | `network`, `hardware`, `printer`, `hvac`, `electrical`, `furniture`, `building_facilities`, `other` |
+| `building_id` | A building id |
+| `assignment` | `unassigned` (the triage queue) or `assigned` |
+| `assigned_to` | An engineer's user id |
+| `escalated` | `true` or `false` |
+| `q` | Case-insensitive text in title, short description, requester name or requester email, or an exact ticket id |
+
+Filters combine with AND, so `assignment=unassigned&assigned_to=4` is always empty. An unknown value or parameter returns 422.
+
+Ticket details: the employee's details view plus `priority` and the requester's `created_by_name`, `created_by_email` and `created_by_phone`. Any ticket, not just the admin's own.
+
+```sh
+curl http://localhost:8000/api/core/admin/tickets/1 -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 {"ticket_id":1,...,"escalation_requested":true,"escalation_reason":"I have client calls all afternoon.",
+#      "assigned_to_name":null,"priority":"P3","created_by_name":"Jane Doe","created_by_email":"jane.doe@acme.inc","created_by_phone":"555-0100"}
+# Doesn't exist: 404 {"detail":"Ticket not found"}. Non-numeric id: 422.
+```
+
+Notes and status history of any ticket, in the same shapes as the employee routes. Read-only: admins can't add notes yet.
+
+```sh
+curl http://localhost:8000/api/core/admin/tickets/1/notes -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 [{"note_id":1,"author_name":"Jane Doe","author_role":"employee","note_text":"Still dropping after a restart.",...}]
+curl http://localhost:8000/api/core/admin/tickets/1/history -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 [{"history_id":1,"from_status":null,"to_status":"open","changed_by_name":"Jane Doe",...}]
+# Doesn't exist: 404.
+```
+
 CORS allows the frontend origin:
 
 ```sh
@@ -324,7 +374,7 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- Only the employee side is built. Engineers and facility admins sign in to their own start pages (`/engineer`, `/admin`), which are placeholders for now: their endpoints (assigning, changing status, blocking, closing) don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set their `role_id` in the `users` table directly, to one of the rows in `roles` (`employee`, `engineer`, `admin`).
+- The employee side is built; the staff side is in progress. Facility admins can list, filter and read every ticket (`/admin/tickets`), but can't act on them yet. Engineers and admins sign in to placeholder start pages (`/engineer`, `/admin`). The endpoints for assigning, changing status, blocking and closing don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set their `role_id` in the `users` table directly, to one of the rows in `roles` (`employee`, `engineer`, `admin`).
 - Status history is only written when a ticket is created, since nothing else changes status yet. The engineer and admin endpoints must call `ticket_repository.insert_status_change` in the same transaction as every status update, or the history will miss that step.
-- Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.
+- Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

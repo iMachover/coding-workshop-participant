@@ -51,5 +51,6 @@ def require_role(*roles: Role) -> Callable[..., dict[str, Any]]:
     return check
 
 
-# Employee self-service (/tickets). Engineers and admins get their own routes later.
+# Employee self-service (/tickets). Admin routes check their role once on the /admin router;
+# engineers get their own routes later.
 EmployeeUser = Annotated[dict[str, Any], Depends(require_role("employee"))]

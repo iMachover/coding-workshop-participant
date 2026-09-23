@@ -1,5 +1,5 @@
 """Who may call what: sign-in is required everywhere but a few public routes, and
-/tickets is for employees only."""
+/tickets is for employees only, /admin for Facility Admins only."""
 
 import pytest
 
@@ -33,6 +33,13 @@ EMPLOYEE_ONLY = [
     ("POST", "/tickets/{ticket_id}/escalation", {"reason": "please"}),
 ]
 
+ADMIN_ONLY = [
+    ("GET", "/admin/tickets"),
+    ("GET", "/admin/tickets/{ticket_id}"),
+    ("GET", "/admin/tickets/{ticket_id}/notes"),
+    ("GET", "/admin/tickets/{ticket_id}/history"),
+]
+
 
 def _url(path: str, ticket_id: int = 1) -> str:
     return API_PREFIX + path.replace("{ticket_id}", str(ticket_id)).replace("{building_id}", "1").replace(
@@ -43,6 +50,7 @@ def _url(path: str, ticket_id: int = 1) -> str:
 def test_the_public_list_matches_real_routes() -> None:
     assert PUBLIC <= set(ALL_ROUTES)
     assert {(m, p) for m, p, _ in EMPLOYEE_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/tickets")}
+    assert set(ADMIN_ONLY) == {r for r in ALL_ROUTES if r[1].startswith("/admin")}
 
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
@@ -61,6 +69,19 @@ def test_ticket_routes_are_employee_only(
     ticket = create_ticket(jane)
     response = client.request(
         method, _url(path, ticket["ticket_id"]), json=body, headers=bearer(user_with_role(role))
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": ACCESS_DENIED}
+
+
+@pytest.mark.parametrize("role", ["employee", "engineer"])
+@pytest.mark.parametrize(("method", "path"), ADMIN_ONLY)
+def test_admin_routes_are_admin_only(
+    client, user_with_role, create_ticket, jane, role, method, path
+) -> None:
+    ticket = create_ticket(jane)
+    response = client.request(
+        method, _url(path, ticket["ticket_id"]), headers=bearer(user_with_role(role))
     )
     assert response.status_code == 403
     assert response.json() == {"detail": ACCESS_DENIED}

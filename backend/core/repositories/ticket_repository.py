@@ -82,6 +82,100 @@ def get_detail(conn: psycopg.Connection, ticket_id: int) -> dict[str, Any] | Non
     ).fetchone()
 
 
+def list_all(
+    conn: psycopg.Connection,
+    *,
+    status: str | None,
+    priority: str | None,
+    urgency: str | None,
+    category: str | None,
+    building_id: int | None,
+    assigned: bool | None,
+    assigned_to: int | None,
+    escalated: bool | None,
+    closed: bool | None,
+    search: str | None,
+) -> list[dict[str, Any]]:
+    """Return every ticket with priority, location, requester and engineer names, for triage.
+
+    Highest priority first (P1 sorts before P2), then the longest-waiting. Each filter is
+    skipped when its value is None, so the SQL text never changes.
+    """
+    return conn.execute(
+        """
+        SELECT
+            t.ticket_id, t.title, t.short_description, t.category, t.status,
+            t.urgency, t.affected_scope, t.priority, t.escalation_requested,
+            t.building_id, b.building_name, t.floor_id, f.floor_number,
+            t.seat_id, s.seat_number, t.created_at, t.updated_at,
+            t.created_by_user_id, creator.full_name AS created_by_name,
+            t.assigned_to_user_id, engineer.full_name AS assigned_to_name
+        FROM tickets t
+        JOIN buildings b ON b.building_id = t.building_id
+        LEFT JOIN floors f ON f.floor_id = t.floor_id
+        LEFT JOIN seats s ON s.seat_id = t.seat_id
+        JOIN users creator ON creator.user_id = t.created_by_user_id
+        LEFT JOIN users engineer ON engineer.user_id = t.assigned_to_user_id
+        WHERE (%(status)s::text IS NULL OR t.status = %(status)s)
+          AND (%(priority)s::text IS NULL OR t.priority = %(priority)s)
+          AND (%(urgency)s::text IS NULL OR t.urgency = %(urgency)s)
+          AND (%(category)s::text IS NULL OR t.category = %(category)s)
+          AND (%(building_id)s::integer IS NULL OR t.building_id = %(building_id)s)
+          AND (%(assigned)s::boolean IS NULL
+               OR (t.assigned_to_user_id IS NOT NULL) = %(assigned)s)
+          AND (%(assigned_to)s::integer IS NULL OR t.assigned_to_user_id = %(assigned_to)s)
+          AND (%(escalated)s::boolean IS NULL OR t.escalation_requested = %(escalated)s)
+          AND (%(closed)s::boolean IS NULL OR (t.status = 'closed') = %(closed)s)
+          AND (%(search)s::text IS NULL
+               OR t.title ILIKE %(pattern)s
+               OR t.short_description ILIKE %(pattern)s
+               OR creator.full_name ILIKE %(pattern)s
+               OR creator.email ILIKE %(pattern)s
+               OR t.ticket_id::text = %(search)s)
+        ORDER BY t.priority, t.created_at, t.ticket_id
+        """,
+        {
+            "status": status,
+            "priority": priority,
+            "urgency": urgency,
+            "category": category,
+            "building_id": building_id,
+            "assigned": assigned,
+            "assigned_to": assigned_to,
+            "escalated": escalated,
+            "closed": closed,
+            "search": search,
+            "pattern": _like_pattern(search) if search else None,
+        },
+    ).fetchall()
+
+
+def get_admin_detail(conn: psycopg.Connection, ticket_id: int) -> dict[str, Any] | None:
+    """Return one ticket as get_detail does, plus priority and the requester's contact details."""
+    return conn.execute(
+        """
+        SELECT
+            t.ticket_id, t.title, t.short_description, t.description, t.category,
+            t.urgency, t.affected_scope, t.priority, t.status, t.building_id,
+            t.floor_id, t.seat_id, t.created_by_user_id, t.assigned_to_user_id,
+            t.escalation_requested, t.escalation_reason, t.blocked_reason,
+            t.created_at, t.updated_at, t.acknowledged_at, t.assigned_at, t.resolved_at,
+            b.building_name, f.floor_number, s.seat_number,
+            engineer.full_name AS assigned_to_name,
+            creator.full_name AS created_by_name, creator.email AS created_by_email,
+            creator.phone_number AS created_by_phone
+        FROM tickets t
+        JOIN buildings b ON b.building_id = t.building_id
+        LEFT JOIN floors f ON f.floor_id = t.floor_id
+        LEFT JOIN seats s ON s.seat_id = t.seat_id
+        JOIN users creator ON creator.user_id = t.created_by_user_id
+        LEFT JOIN users engineer ON engineer.user_id = t.assigned_to_user_id
+        WHERE t.ticket_id = %s
+        """,
+        (ticket_id,),
+    ).fetchone()
+
+
 def lock(conn: psycopg.Connection, ticket_id: int) -> None:
     """Lock a ticket row until the transaction ends, so its status can't change mid-update."""
     conn.execute("SELECT 1 FROM tickets WHERE ticket_id = %s FOR UPDATE", (ticket_id,))
