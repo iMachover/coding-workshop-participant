@@ -72,6 +72,29 @@ describe('requests', () => {
     expect(headers).not.toHaveProperty('X-User-Id')
   })
 
+  it('sends PATCH bodies the same way', async () => {
+    const fetchMock = mockFetch(200, { seat_id: 3 })
+
+    await expect(api.patch('/admin/seats/3', { is_active: false })).resolves.toEqual({ seat_id: 3 })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/core/admin/seats/3')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body)).toEqual({ is_active: false })
+  })
+
+  it('sends DELETE without a body', async () => {
+    const fetchMock = mockFetch(204)
+
+    await expect(api.delete('/admin/seats/3')).resolves.toBeNull()
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/core/admin/seats/3')
+    expect(init.method).toBe('DELETE')
+    expect(init.body).toBeUndefined()
+    expect(init.headers['Content-Type']).toBeUndefined()
+  })
+
   it('returns null for 204 No Content', async () => {
     mockFetch(204)
     await expect(api.get('/anything')).resolves.toBeNull()

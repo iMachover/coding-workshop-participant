@@ -17,9 +17,16 @@ PRIORITY_BY_SCOPE = {"building": "P1", "floor": "P2", "me": "P3"}
 
 
 def _check_location(conn: psycopg.Connection, data: TicketCreate) -> None:
-    """Make sure the building exists, the floor is in it and the seat is on that floor."""
-    if location_repository.get_building(conn, data.building_id) is None:
+    """Make sure the building exists, the floor is in it and the seat is on that floor.
+
+    Each level must also be active. Checking the whole chain means a seat under an
+    inactive floor or building is refused too, as the dropdowns no longer offer it.
+    """
+    building = location_repository.get_building(conn, data.building_id)
+    if building is None:
         raise BadRequestError(f"Building {data.building_id} does not exist")
+    if not building["is_active"]:
+        raise BadRequestError(f"{building['building_name']} is no longer available")
 
     if data.floor_id is not None:
         floor = location_repository.get_floor(conn, data.floor_id)
@@ -29,6 +36,8 @@ def _check_location(conn: psycopg.Connection, data: TicketCreate) -> None:
             raise BadRequestError(
                 f"Floor {data.floor_id} is not in building {data.building_id}"
             )
+        if not floor["is_active"]:
+            raise BadRequestError(f"Floor {floor['floor_number']} is no longer available")
 
     if data.seat_id is not None:
         seat = location_repository.get_seat(conn, data.seat_id)
@@ -36,6 +45,8 @@ def _check_location(conn: psycopg.Connection, data: TicketCreate) -> None:
             raise BadRequestError(f"Seat {data.seat_id} does not exist")
         if seat["floor_id"] != data.floor_id:
             raise BadRequestError(f"Seat {data.seat_id} is not on floor {data.floor_id}")
+        if not seat["is_active"]:
+            raise BadRequestError(f"Seat {seat['seat_number']} is no longer available")
 
 
 def _get_own_ticket(conn: psycopg.Connection, user_id: int, ticket_id: int) -> dict[str, Any]:

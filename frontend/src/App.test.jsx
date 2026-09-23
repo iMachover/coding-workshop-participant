@@ -16,6 +16,7 @@ vi.mock('./services/adminTicketService', () => ({
   getMetrics: vi.fn().mockResolvedValue({ unassigned: 0, open: 0, in_progress: 0, blocked: 0, resolved: 0, active_p1: 0, escalated: 0, closed_last_7_days: 0 }),
 }))
 vi.mock('./services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/adminFacilityService', () => ({ getFacilities: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/adminUserService', () => ({
   listEngineers: vi.fn().mockResolvedValue([]),
   listUsers: vi.fn().mockResolvedValue([]),
@@ -132,11 +133,13 @@ describe('header navigation', () => {
   it.each([
     ['/admin', 'Dashboard', 'Facility Admin dashboard'],
     ['/admin/people', 'People', 'People'],
+    ['/admin/facilities', 'Facilities', 'Facilities'],
   ])('marks the current admin page at %s', async (route, current, title) => {
     renderWithProviders(<App />, { route, user: ALEX })
     expect(heading()).toHaveTextContent(title)
     expect(within(nav()).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/admin')
     expect(within(nav()).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people')
+    expect(within(nav()).getByRole('link', { name: 'Facilities' })).toHaveAttribute('href', '/admin/facilities')
     expect(within(nav()).getByRole('link', { current: 'page' })).toHaveTextContent(current)
     await act(async () => {})
   })
@@ -147,6 +150,8 @@ describe('header navigation', () => {
 
     await user.click(within(nav()).getByRole('link', { name: 'People' }))
     expect(heading()).toHaveTextContent('People')
+    await user.click(within(nav()).getByRole('link', { name: 'Facilities' }))
+    expect(heading()).toHaveTextContent('Facilities')
     await user.click(within(nav()).getByRole('link', { name: 'Dashboard' }))
     expect(heading()).toHaveTextContent('Facility Admin dashboard')
     await act(async () => {})
@@ -154,7 +159,7 @@ describe('header navigation', () => {
 
   it('puts the links on a second row on phones', async () => {
     renderWithProviders(<App />, { route: '/admin/people', user: ALEX, width: 375 })
-    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['Dashboard', 'People'])
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['Dashboard', 'People', 'Facilities'])
     await act(async () => {})
   })
 

@@ -8,6 +8,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import SearchIcon from '@mui/icons-material/Search'
 
+import { buildingFilterOptions } from '../../utils/facilities'
 import { CATEGORIES, PRIORITIES, STATUSES } from '../../utils/ticketFormat'
 import FilterSelect from '../FilterSelect'
 
@@ -85,7 +86,7 @@ function AdminTicketFilters({ values, onChange, buildings, engineers }) {
           label="Building"
           allLabel="All buildings"
           value={values.building_id}
-          options={buildings.map((b) => [String(b.building_id), b.building_name])}
+          options={buildingFilterOptions(buildings)}
           onChange={set('building_id')}
           minWidth={150}
         />
@@ -132,10 +133,12 @@ AdminTicketFilters.propTypes = {
     escalated: PropTypes.bool.isRequired,
   }).isRequired,
   onChange: PropTypes.func.isRequired,
+  // From GET /admin/facilities, so inactive buildings (marked) can still be filtered by.
   buildings: PropTypes.arrayOf(
     PropTypes.shape({
       building_id: PropTypes.number.isRequired,
       building_name: PropTypes.string.isRequired,
+      is_active: PropTypes.bool.isRequired,
     }),
   ).isRequired,
   engineers: PropTypes.arrayOf(

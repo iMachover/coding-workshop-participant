@@ -27,10 +27,11 @@ describe('roleLabel', () => {
 describe('navLinksFor', () => {
   const current = (role, path) => navLinksFor(role, path).filter((l) => l.current).map((l) => l.label)
 
-  it('gives admins Dashboard and People', () => {
+  it('gives admins Dashboard, People and Facilities', () => {
     expect(navLinksFor('admin', '/admin').map(({ to, label }) => [to, label])).toEqual([
       ['/admin', 'Dashboard'],
       ['/admin/people', 'People'],
+      ['/admin/facilities', 'Facilities'],
     ])
   })
 
@@ -38,6 +39,7 @@ describe('navLinksFor', () => {
     ['/admin', ['Dashboard']],
     ['/admin/tickets/5', ['Dashboard']],
     ['/admin/people', ['People']],
+    ['/admin/facilities', ['Facilities']],
     ['/admin/peoplex', ['Dashboard']],
     ['/dashboard', []],
   ])('marks the right link current at %s', (path, expected) => {

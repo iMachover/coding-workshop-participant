@@ -1,7 +1,8 @@
 """Shared fixtures. Tests run against a separate database, so dev data is never touched.
 
-The schema is rebuilt once per run, and users/tickets/notes are emptied before every
-test. The seeded buildings, floors and seats stay, since nothing in the API changes them.
+The schema is rebuilt once per run. Before every test, users/tickets/notes are emptied
+and the buildings, floors and seats go back to just the seeded ones (admins can change
+them through the API).
 """
 
 import os
@@ -47,11 +48,13 @@ def _test_database() -> None:
 
 @pytest.fixture(autouse=True)
 def _empty_tables() -> None:
-    """Start every test with no users, tickets or notes."""
+    """Start every test with no users, tickets or notes, and only the seeded locations."""
     with db.transaction() as conn:
         conn.execute(
-            "TRUNCATE ticket_status_history, ticket_notes, tickets, users RESTART IDENTITY CASCADE"
+            "TRUNCATE ticket_status_history, ticket_notes, tickets, users, seats, floors, buildings "
+            "RESTART IDENTITY CASCADE"
         )
+        conn.execute((SQL_DIR / "seed.sql").read_text())
 
 
 @pytest.fixture(autouse=True)

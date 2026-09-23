@@ -63,7 +63,7 @@ Frontend code lives in `frontend/src/`:
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useAllTickets` (admin), `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
-| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, the workflow (Blocked is a side state off In Progress, not a step) and the moves an engineer can make from each status, the admin's metric cards and the filter each one applies (`adminMetrics.js`), and each role's label and start page (`roles.js`) |
+| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, the workflow (Blocked is a side state off In Progress, not a step) and the moves an engineer can make from each status, the admin's metric cards and the filter each one applies (`adminMetrics.js`), the facilities rules and labels (`facilities.js`: names like "Floor 3", the same limits as the API), and each role's label and start page (`roles.js`) |
 | `frontend/e2e/` (outside `src/`) | Playwright end-to-end tests (see Testing) |
 | `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 
@@ -85,7 +85,7 @@ cd backend/core
 ../.venv/bin/pytest --cov --cov-report=term-missing
 ```
 
-Each run rebuilds the test schema from `sql/`, and every test starts with no users, tickets or notes. The suite refuses to run against a database whose name doesn't end in `_test`. To use a different test database, set `TEST_POSTGRES_NAME`.
+Each run rebuilds the test schema from `sql/`, and every test starts with no users, tickets or notes, and only the seeded buildings, floors and seats. The suite refuses to run against a database whose name doesn't end in `_test`. To use a different test database, set `TEST_POSTGRES_NAME`.
 
 | File | Covers |
 |---|---|
@@ -99,6 +99,7 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_admin_tickets.py` | The admin's all-tickets list: triage order (P1 first, then longest-waiting), every filter and search, 422s; details with priority and requester contact; reading any ticket's notes and history; 404s |
 | `test_admin_assignment.py` | Assigning and reassigning: acknowledged once, `assigned_at` moves, status and history untouched, 409 for finished tickets or the same engineer, 400 for non-engineers, 404, 422. Engineer workload: only active tickets count, by status and P1, lightest first |
 | `test_admin_users.py` | The people list (by name, role and active-ticket counts, role filter, name/email search, 422s) and role changes: promoting signs the person out and makes them assignable, demoting is blocked while they have active tickets, same role 409, admin accounts 403, `admin` can't be given (422), 404 |
+| `test_admin_facilities.py` | Managing locations: the full tree in order with active-ticket counts (closed tickets don't count) and inactive items flagged; adding at each level (trimmed, negative floors, duplicates 409 ignoring case, missing parent 404, 422s); renaming (409 for a name in use, changing only the case of its own name is fine); deactivating hides the item and everything under it from the employee dropdowns and from new tickets (400), while existing tickets keep their location; reactivating; deleting only what nothing has used (409 for any ticket, even closed, or for floors or seats underneath); 404s and bad ids; `schema.sql` adding `is_active` to an older database |
 | `test_admin_finish.py` | Finishing resolved tickets: closing keeps `resolved_at` and ends notes and status changes for everyone; sending back returns the work to the same engineer (reason required), or 409 if they're no longer an engineer; only resolved tickets (409); bad statuses and reasons (422); 404. Dashboard metrics: every count, and only recent closes |
 | `test_engineer_tickets.py` | An engineer's queue: only their assigned tickets, triage order, every filter and search, 422s (including trying `assigned_to`); details with priority and requester contact; other people's, unassigned and reassigned-away tickets look missing (404); notes the employee also sees, allowed until closed (409); history |
 | `test_engineer_status.py` | Status changes: start, block and unblock (reason kept, then cleared), resolve and reopen (`resolved_at` set, then cleared), the whole workflow recorded in order, the employee seeing reasons but not priority, workload following along; every move the workflow refuses (409 with a hint), missing or bad reasons and statuses (422), other people's tickets (404) |
@@ -143,7 +144,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 | `engineer-journey.spec.js` | An engineer signs in to My queue → "Up next" and the counts → their tickets only, in triage order, with filters → Start work from the card, which makes it the Current ticket → its details (priority, requester) → add a note → block it with a reason, unblock, resolve it with a summary → the employee sees it resolved, with the summary, on their own page → someone else's ticket looks missing. Also fits a phone. |
 | `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
 | `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, an engineer landing on their own workspace (and never calling the tickets API), and the phone layout |
-| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Closing: the "Ready to close" card lists resolved tickets, one is closed with a note (the employee sees it) and another is sent back to its engineer, and "Closed (7 days)" counts it. Also: employees can't open the admin pages, and the admin pages fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
+| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Closing: the "Ready to close" card lists resolved tickets, one is closed with a note (the employee sees it) and another is sent back to its engineer, and "Closed (7 days)" counts it. Facilities: add a building, floor and seat (the same seat in another case is refused in the dialog), the employee can pick the new building, a ticket there makes delete refuse with "Deactivate instead", then the employee can't pick it but their ticket keeps it, and its ticket count opens the dashboard filtered to it. Also: employees can't open any admin page, and the admin pages (Facilities too) fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
 
 ### Manual checks with curl
 
@@ -204,7 +205,7 @@ curl http://localhost:8000/api/core/auth/me -H "Authorization: Bearer $TOKEN"
 | The account was deleted, or its role changed since sign-in | 401 `Unknown user` / `Your access has changed. Please sign in again.` |
 | Valid token, but the role may not use the route (engineers and admins on `/tickets`, employees and engineers on `/admin`, employees and admins on `/engineer`) | 403 `You don't have access to this.` |
 
-Locations for the create-ticket dropdowns (Building → Floor → Seat). Any signed-in role may read them.
+Locations for the create-ticket dropdowns (Building → Floor → Seat). Any signed-in role may read them. Only active locations are listed; Facility Admins manage them (see below).
 
 ```sh
 curl http://localhost:8000/api/core/buildings -H "Authorization: Bearer $TOKEN"
@@ -213,7 +214,7 @@ curl http://localhost:8000/api/core/buildings/1/floors -H "Authorization: Bearer
 # [{"floor_id":1,"floor_number":1,"building_id":1},...]
 curl http://localhost:8000/api/core/floors/3/seats -H "Authorization: Bearer $TOKEN"
 # [{"seat_id":3,"seat_number":"301","floor_id":3},...]
-# Unknown building or floor: 404. Non-numeric id: 422.
+# Unknown or inactive building or floor (or a floor in an inactive building): 404. Non-numeric id: 422.
 ```
 
 Create a ticket (employees only). The server sets `status` to `open` and the creator from the token. It also stores an internal `priority` from `affected_scope` (building → P1, floor → P2, me → P3) for engineers and admins; employee responses never include it.
@@ -232,6 +233,7 @@ curl -X POST http://localhost:8000/api/core/tickets -H "Authorization: Bearer $T
 | `affected_scope` is `floor` without `floor_id`, or `me` without `seat_id`, or `seat_id` without `floor_id` | 422 |
 | Unknown category/urgency/scope, blank title | 422 |
 | Floor not in the building, seat not on the floor, unknown building/floor/seat | 400 |
+| A building, floor or seat an admin has deactivated | 400 `Building A is no longer available` (or `Floor 3 …`, `Seat 301 …`) |
 
 List my tickets, most recently updated first. Only the caller's own tickets are returned, with building name and floor/seat numbers filled in.
 
@@ -416,6 +418,49 @@ curl -X PUT http://localhost:8000/api/core/admin/users/3/role -H "Authorization:
 | An engineer with active tickets back to employee | 409 `Sam Tech still has 1 active ticket. Reassign them first.` |
 | `role` missing or not `employee`/`engineer` (e.g. `admin`) | 422 |
 
+#### Facility Admin: facilities
+
+Buildings, floors and seats, inactive ones included, as one tree: buildings by name, floors lowest first, seats by number. Every item has `is_active` and `active_ticket_count` (tickets there that aren't closed, the same "active" as `view=active`; a building counts every ticket in it).
+
+```sh
+curl http://localhost:8000/api/core/admin/facilities -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 [{"building_id":1,"building_name":"Building A","is_active":true,"active_ticket_count":2,
+#       "floors":[{"floor_id":1,"floor_number":1,"building_id":1,"is_active":true,"active_ticket_count":0,
+#                  "seats":[{"seat_id":1,"seat_number":"101","floor_id":1,"is_active":true,"active_ticket_count":0},...]},...]},...]
+```
+
+Add a building, a floor to a building, or a seat to a floor. Each returns the new item (no children), active, with 201. Building names are unique ignoring case; floor numbers (-10 to 200, so basements work) are unique in their building; seat numbers (text, e.g. `12A`) are unique on their floor ignoring case.
+
+```sh
+curl -X POST http://localhost:8000/api/core/admin/buildings -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"building_name":"Annex"}'
+# 201 {"building_id":3,"building_name":"Annex","is_active":true,"active_ticket_count":0}
+curl -X POST http://localhost:8000/api/core/admin/buildings/3/floors -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"floor_number":-1}'
+# 201 {"floor_id":6,"floor_number":-1,"building_id":3,"is_active":true,"active_ticket_count":0}
+curl -X POST http://localhost:8000/api/core/admin/floors/6/seats -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"seat_number":"B-12"}'
+# 201 {"seat_id":21,"seat_number":"B-12","floor_id":6,"is_active":true,"active_ticket_count":0}
+```
+
+Rename and/or deactivate with `PATCH /admin/buildings/{id}` (`building_name`, `is_active`), `PATCH /admin/floors/{id}` (`floor_number`, `is_active`) or `PATCH /admin/seats/{id}` (`seat_number`, `is_active`). Send only what changes. Deactivating never touches tickets: they keep their location. It only hides the item, and everything under it, from the dropdowns and from new tickets. Reactivating brings it back (a floor stays hidden while its building is inactive).
+
+```sh
+curl -X PATCH http://localhost:8000/api/core/admin/buildings/2 -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"is_active":false}'
+# 200 {"building_id":2,"building_name":"Building B","is_active":false,"active_ticket_count":1}
+```
+
+Delete with `DELETE /admin/buildings/{id}`, `/admin/floors/{id}` or `/admin/seats/{id}` (204). Only for something nothing has used yet, like a typo: no tickets at all (closed ones included) and nothing underneath it. Otherwise deactivate it.
+
+| Problem | Status and `detail` |
+|---|---|
+| Name or number already used | 409 `There's already a building called Annex` / `Building A already has floor 3` / `Floor 3 already has seat 301` |
+| Deleting something a ticket has used | 409 `Building A has 4 tickets, so it can't be deleted. Deactivate it instead.` |
+| Deleting a building with floors, or a floor with seats | 409 `Building B still has 2 floors. Delete them first, or deactivate it instead.` |
+| The building, floor or seat doesn't exist (or the parent you're adding to) | 404 `Building not found` / `Floor not found` / `Seat not found` |
+| Blank or too-long name (over 100 characters; seats 20), floor number outside -10 to 200, unknown fields, or a `PATCH` with nothing to change | 422 |
+
 #### Engineer: my queue
 
 Engineers only; `$ENGINEER_TOKEN` is an engineer's login token. Every route acts on the tickets **currently assigned to the caller**. Any other ticket (unassigned, someone else's, or reassigned away) is 404, not 403, so its existence isn't revealed. Rows and details use the same shapes as the admin routes, so they include `priority` and the requester's contact details.
@@ -533,7 +578,7 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- Employees, engineers and Facility Admins each have their pages. Facility admins have a dashboard (`/admin`: count cards that filter the list, the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket, and close a resolved ticket or send it back (notes are read-only for them), and a People page (`/admin/people`) to move people between employee and engineer. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers have My queue (`/engineer`: the current or next ticket, counts, and their tickets with search and filters) and a details page (`/engineer/tickets/:id`) where they can add notes and move the ticket along: start, block (with a reason), unblock, resolve (with a summary) and reopen. Only the moves the workflow allows are offered, and "Up next" can be started from the dashboard. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts are only set up in SQL: set their `role_id` in the `users` table to the `admin` row in `roles`.
+- Employees, engineers and Facility Admins each have their pages. Facility admins have a dashboard (`/admin`: count cards that filter the list, the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket, and close a resolved ticket or send it back (notes are read-only for them), a People page (`/admin/people`) to move people between employee and engineer, and a Facilities page (`/admin/facilities`: buildings beside the chosen one's floor accordions and seat chips, a building dropdown on phones) to add, rename, deactivate or reactivate, and delete buildings, floors and seats. The dashboard's Building filter lists inactive buildings too (marked), and `?building=<id>` opens it filtered to one. Engineers' Building filter still uses the employee list (`GET /buildings`), so it leaves out inactive buildings even when an engineer has tickets there. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers have My queue (`/engineer`: the current or next ticket, counts, and their tickets with search and filters) and a details page (`/engineer/tickets/:id`) where they can add notes and move the ticket along: start, block (with a reason), unblock, resolve (with a summary) and reopen. Only the moves the workflow allows are offered, and "Up next" can be started from the dashboard. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts are only set up in SQL: set their `role_id` in the `users` table to the `admin` row in `roles`.
 - Status history is written when a ticket is created and on every status change (engineers moving it along, admins closing it or sending it back). Any new endpoint that changes status must call `ticket_repository.set_status` and `insert_status_change` in the same transaction, or the history will miss that step. Tickets have no `closed_at` column: the close time is the history row's `changed_at`.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

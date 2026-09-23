@@ -14,6 +14,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
 - [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning, people and roles, closing or sending back resolved tickets, dashboard metrics
 - [Engineer](#engineer): my queue (filters, triage order), ticket details, status history, notes (list/add), status changes (start, block, unblock, resolve, reopen)
+- [Facilities (admin)](#facilities-admin): the building → floor → seat tree, and adding, renaming, deactivating and deleting at each level
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -28,7 +29,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer, Admin - closing) with **110 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer, Admin - closing, Admin - facilities) with **139 requests**: every route's success case plus its common errors. Each request has tests, and every response except a `204 No Content` is checked to be JSON.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -50,8 +51,11 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `engineerAccessToken` | Login - engineer | The Engineer folder's `Authorization: Bearer` header |
 | `closeTicketId` | Setup - the employee reports another ticket | The Admin - closing folder's own ticket |
 | `closedBefore` | Metrics - one ready to close | Checking the close shows up in `closed_last_7_days` |
+| `existingBuildingName` | Facilities tree (the first building) | Checking a rename to a name in use is refused |
+| `facilityName`, `facilityNameLower` | Add building's pre-request script (`Postman Annex <timestamp>`, unique per run) | The Admin - facilities folder's own building, and the same name in lowercase for the duplicate check |
+| `facilityBuildingId`, `facilityFloorId`, `facilitySeatId` | Add building / Add floor / Add seat | Renaming, deactivating and deleting them. The folder deletes all three at the end. |
 
-A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
+A new user and ticket are created on each run, so it can be re-run without resetting the database. The Admin - facilities folder deletes the building, floor and seat it adds, so runs don't pile up locations. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
 
 **Against AWS:** change the collection variable `baseUrl` to `https://<cloudfront-domain>/api/core` (the `VITE_API_URL` in `frontend/.env.local` + `/api/core`). If you use a Postman environment, only put `baseUrl` in it: an environment variable named `accessToken` or `ticketId` would override the ones the scripts save.
 
@@ -79,7 +83,7 @@ psql -U test -d codingworkshop -c "UPDATE users SET role_id = (SELECT role_id FR
 
 Then set the collection variables `adminEmail` and `adminPassword` to the admin account (or pass them with `--env-var` to newman, as above). Without them, **Login - admin** fails with "adminEmail and adminPassword are set" and the rest of the Admin folder is skipped. With fewer than two engineers, **List engineers** fails with "At least two engineers exist" and the Assign subfolder is skipped. Everything else still runs.
 
-The Engineer folder needs no account of its own: with the admin token, it promotes the collection's second user to engineer, assigns them the ticket, and signs them in with the password it registered them with. Without the admin variables it's skipped too.
+The Engineer folder needs no account of its own: with the admin token, it promotes the collection's second user to engineer, assigns them the ticket, and signs them in with the password it registered them with. Without the admin variables it's skipped too. So are the Admin - closing and Admin - facilities folders.
 
 Every URL below is written as `{{baseUrl}}/...`.
 
@@ -103,7 +107,7 @@ Routes also check the caller's **role**. `/tickets` is for employees; engineers 
 
 ### Request bodies
 
-POST and PUT requests send JSON: **Body → raw → JSON**, which sets `Content-Type: application/json`.
+POST, PUT and PATCH requests send JSON: **Body → raw → JSON**, which sets `Content-Type: application/json`. DELETE requests have no body, and a successful one returns `204 No Content` with an empty body.
 
 ### Error shapes
 
@@ -313,7 +317,7 @@ The token's payload holds only `sub` (user id), `role`, `iat` (issued at), `exp`
 
 ## Locations
 
-These feed the Building → Floor → Seat dropdowns. All of them need a token; any signed-in role may call them.
+These feed the Building → Floor → Seat dropdowns. All of them need a token; any signed-in role may call them. They only list **active** locations: once a Facility Admin [deactivates](#facilities-admin) a building, floor or seat, it (and everything under it) disappears from these lists.
 
 ### List buildings
 
@@ -358,7 +362,7 @@ These feed the Building → Floor → Seat dropdowns. All of them need a token; 
 | Status | When | Body |
 |---|---|---|
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
-| 404 | Building doesn't exist | `{"detail":"Building not found"}` |
+| 404 | Building doesn't exist, or is inactive | `{"detail":"Building not found"}` |
 | 422 | `building_id` not a positive integer | `loc: ["path","building_id"]` |
 
 ### List seats on a floor
@@ -386,7 +390,7 @@ Seat ids aren't sequential within a floor. Always take them from this response.
 | Status | When | Body |
 |---|---|---|
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
-| 404 | Floor doesn't exist | `{"detail":"Floor not found"}` |
+| 404 | Floor doesn't exist, is inactive, or is in an inactive building | `{"detail":"Floor not found"}` |
 | 422 | `floor_id` not a positive integer | `loc: ["path","floor_id"]` |
 
 ---
@@ -467,9 +471,9 @@ Examples: `{{baseUrl}}/tickets?view=active&urgency=high`, `{{baseUrl}}/tickets?q
 | `category` | enum | yes | See [Enum values](#enum-values) |
 | `urgency` | enum | yes | `low`, `medium`, `high` |
 | `affected_scope` | enum | yes | `me`, `floor`, `building` |
-| `building_id` | integer | yes | Must exist |
-| `floor_id` | integer | if scope is `floor` or `me` | Must be in `building_id` |
-| `seat_id` | integer | if scope is `me` | Must be on `floor_id`. Needs `floor_id` |
+| `building_id` | integer | yes | Must exist and be active |
+| `floor_id` | integer | if scope is `floor` or `me` | Must be in `building_id` and active |
+| `seat_id` | integer | if scope is `me` | Must be on `floor_id` and active. Needs `floor_id` |
 
 The server sets `status` (`open`), the creator (from the token) and the internal priority (building → P1, floor → P2, me → P3). Sending `status`, `priority` or `created_by_user_id` in the body has no effect.
 
@@ -522,6 +526,7 @@ The server sets `status` (`open`), the creator (from the token) and the internal
 | 400 | Building doesn't exist | `{"detail":"Building 999 does not exist"}` |
 | 400 | Floor doesn't exist / isn't in the building | `{"detail":"Floor 7 does not exist"}` / `{"detail":"Floor 4 is not in building 1"}` |
 | 400 | Seat doesn't exist / isn't on the floor | `{"detail":"Seat 50 does not exist"}` / `{"detail":"Seat 1 is not on floor 3"}` |
+| 400 | A Facility Admin deactivated the building, floor or seat | `{"detail":"Building A is no longer available"}` / `{"detail":"Floor 3 is no longer available"}` / `{"detail":"Seat 301 is no longer available"}` |
 | 422 | `affected_scope: "floor"` without `floor_id` | `msg: "Value error, Floor-wide issues need a floor_id"` |
 | 422 | `affected_scope: "me"` without `seat_id` | `msg: "Value error, Issues affecting only you need a floor_id and seat_id"` |
 | 422 | `seat_id` without `floor_id` | `msg: "Value error, A seat_id requires a floor_id"` |
@@ -745,7 +750,7 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 
 ## Admin
 
-Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). Admins can [assign tickets](#assign-or-reassign-a-ticket) to engineers and [move people between employee and engineer](#change-someones-role), and [close resolved tickets or send them back](#close-or-send-back-a-resolved-ticket). Admin notes aren't built.
+Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). Admins can [assign tickets](#assign-or-reassign-a-ticket) to engineers and [move people between employee and engineer](#change-someones-role), [close resolved tickets or send them back](#close-or-send-back-a-resolved-ticket), and [manage buildings, floors and seats](#facilities-admin). Admin notes aren't built.
 
 The **Admin - closing** folder runs after the Engineer folder, with its own ticket: the employee reports it, the admin assigns it to the Engineer folder's engineer, and it goes through start, resolve, send back, resolve again and close.
 
@@ -1565,6 +1570,171 @@ What it changes, all in one transaction:
 
 ---
 
+## Facilities (admin)
+
+Facility Admins manage the buildings, floors and seats employees pick from when they report a ticket. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`.
+
+- **Add** a building, a floor to a building, or a seat to a floor. New ones are active.
+- **Rename** (or renumber) any of them, and **deactivate** or **reactivate** them, with `PATCH`.
+- **Deactivating never touches tickets.** Tickets there keep their location, open or closed. It only hides the item, and everything under it, from the [location lists](#locations) and from [new tickets](#create-a-ticket) (400). A floor you reactivate stays hidden while its building is inactive.
+- **Delete** is only for something nothing has used yet, like a typo: no tickets at all (closed ones included) and nothing under it. Anything else is 409, and you deactivate it instead.
+
+Each item carries `is_active` and `active_ticket_count`: tickets there that aren't closed, the same "active" as [List all tickets](#list-all-tickets)' `view=active`. A building counts every ticket in it, whichever floor or seat.
+
+In the collection, the **Admin - facilities** folder's Authorization tab is `Bearer {{adminAccessToken}}` (needs [Setup step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)). It adds its own building, floor and seat, walks them through every change, checks what the employee sees, and deletes them at the end.
+
+### Facilities tree
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/facilities` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+
+**Expected response: `200 OK`.** Every building (by name), inactive ones too, with its floors (lowest first) and each floor's seats (by number). Seat ids aren't sequential within a floor.
+
+```json
+[
+  {
+    "building_id": 1,
+    "building_name": "Building A",
+    "is_active": true,
+    "active_ticket_count": 2,
+    "floors": [
+      {
+        "floor_id": 1,
+        "floor_number": 1,
+        "building_id": 1,
+        "is_active": true,
+        "active_ticket_count": 2,
+        "seats": [
+          { "seat_id": 1, "seat_number": "101", "floor_id": 1, "is_active": true, "active_ticket_count": 2 },
+          { "seat_id": 6, "seat_number": "102", "floor_id": 1, "is_active": true, "active_ticket_count": 0 },
+          { "seat_id": 11, "seat_number": "103", "floor_id": 1, "is_active": true, "active_ticket_count": 0 },
+          { "seat_id": 16, "seat_number": "104", "floor_id": 1, "is_active": true, "active_ticket_count": 0 }
+        ]
+      }
+    ]
+  },
+  { "building_id": 2, "building_name": "Building B", "is_active": true, "active_ticket_count": 0, "floors": [ ... ] }
+]
+```
+
+**Errors:** 401 (missing, invalid or expired token, see [above](#errors-any-route-can-return)), 403 (employee or engineer).
+
+### Add a building, floor or seat
+
+| | Building | Floor | Seat |
+|---|---|---|---|
+| **Method** | `POST` | `POST` | `POST` |
+| **URL** | `{{baseUrl}}/admin/buildings` | `{{baseUrl}}/admin/buildings/:building_id/floors` | `{{baseUrl}}/admin/floors/:floor_id/seats` |
+| **Body** | `building_name` | `floor_number` | `seat_number` |
+
+**Auth:** `Authorization: Bearer {{adminAccessToken}}`. **Headers:** `Content-Type: application/json`.
+
+**Request body** (exactly one field; any other field is a 422)
+
+| Field | Type | Rules |
+|---|---|---|
+| `building_name` | string | Trimmed; 1–100 characters. Unique, **ignoring case** ("building a" clashes with "Building A"). |
+| `floor_number` | integer | -10 to 200, so basements work. Unique in its building. |
+| `seat_number` | string | Trimmed; 1–20 characters, e.g. `"12A"`. Unique on its floor, ignoring case. |
+
+You can add a floor to an inactive building, or a seat to an inactive floor: it stays hidden from employees until the parent is active again.
+
+```json
+{ "building_name": "Annex" }
+```
+
+**Expected response: `201 Created`.** The new item, active, with no children:
+
+```json
+{ "building_id": 3, "building_name": "Annex", "is_active": true, "active_ticket_count": 0 }
+```
+
+```json
+{ "floor_id": 6, "floor_number": -1, "building_id": 3, "is_active": true, "active_ticket_count": 0 }
+```
+
+```json
+{ "seat_id": 21, "seat_number": "B-12", "floor_id": 6, "is_active": true, "active_ticket_count": 0 }
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 404 | The building (for a floor) or floor (for a seat) doesn't exist | `{"detail":"Building not found"}` / `{"detail":"Floor not found"}` |
+| 409 | The name or number is already used there | `{"detail":"There's already a building called Annex"}` / `{"detail":"Building A already has floor 3"}` / `{"detail":"Floor 3 already has seat 301"}` |
+| 422 | Missing, blank or too-long name, floor number outside -10 to 200 or not an integer, or an unknown field | `loc: ["body","building_name"]` etc. |
+| 422 | Path id not a positive integer | `loc: ["path","building_id"]` / `["path","floor_id"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+### Rename or (de)activate a building, floor or seat
+
+| | Building | Floor | Seat |
+|---|---|---|---|
+| **Method** | `PATCH` | `PATCH` | `PATCH` |
+| **URL** | `{{baseUrl}}/admin/buildings/:building_id` | `{{baseUrl}}/admin/floors/:floor_id` | `{{baseUrl}}/admin/seats/:seat_id` |
+
+**Auth:** `Authorization: Bearer {{adminAccessToken}}`. **Headers:** `Content-Type: application/json`.
+
+**Request body.** Send only what changes: a new name or number, `is_active`, or both. The same rules as [adding](#add-a-building-floor-or-seat) apply to the name or number. Setting `is_active` to the value it already has is fine (200, nothing changes).
+
+| Field | Type | For |
+|---|---|---|
+| `building_name` / `floor_number` / `seat_number` | as when adding | Rename or renumber |
+| `is_active` | boolean | `false` hides it (and everything under it) from employees and new tickets; `true` brings it back |
+
+```json
+{ "is_active": false }
+```
+
+**Expected response: `200 OK`.** The item, updated, in the same shape as when it was added:
+
+```json
+{ "building_id": 2, "building_name": "Building B", "is_active": false, "active_ticket_count": 0 }
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 404 | It doesn't exist | `{"detail":"Building not found"}` / `{"detail":"Floor not found"}` / `{"detail":"Seat not found"}` |
+| 409 | The new name or number is already used there. Changing only the case of its own name is fine. | `{"detail":"There's already a building called Building B"}` / `{"detail":"Building A already has floor 1"}` / `{"detail":"Floor 3 already has seat 302"}` |
+| 422 | Empty body, or only `null`s | `loc: ["body"]`, `msg: "Value error, Nothing to change"` |
+| 422 | Blank or too-long name, floor number out of range, `is_active` not a boolean, or an unknown field (e.g. `floor_number` on a building) | FastAPI validation list |
+| 422 | Path id not a positive integer | `loc: ["path",...]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+### Delete a building, floor or seat
+
+| | Building | Floor | Seat |
+|---|---|---|---|
+| **Method** | `DELETE` | `DELETE` | `DELETE` |
+| **URL** | `{{baseUrl}}/admin/buildings/:building_id` | `{{baseUrl}}/admin/floors/:floor_id` | `{{baseUrl}}/admin/seats/:seat_id` |
+
+**Auth:** `Authorization: Bearer {{adminAccessToken}}`. No body.
+
+Only for something nothing has used: no ticket has ever pointed at it (closed ones count too), and it has no floors (building) or seats (floor), active or not. To remove a whole building, delete its seats, then its floors, then the building. Once tickets use a location, deactivate it instead.
+
+**Expected response: `204 No Content`**, empty body.
+
+**Errors** (checked in this order)
+
+| Status | When | Body |
+|---|---|---|
+| 404 | It doesn't exist (or was already deleted) | `{"detail":"Building not found"}` / `{"detail":"Floor not found"}` / `{"detail":"Seat not found"}` |
+| 409 | A ticket uses it | `{"detail":"Building A has 4 tickets, so it can't be deleted. Deactivate it instead."}` (or `Floor 3 has…`, `Seat 301 has…`) |
+| 409 | A building with floors, or a floor with seats | `{"detail":"Building B still has 2 floors. Delete them first, or deactivate it instead."}` / `{"detail":"Floor 1 still has 4 seats. Delete them first, or deactivate it instead."}` |
+| 422 | Path id not a positive integer | `loc: ["path",...]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+---
+
 ## Suggested test run
 
 **Run collection** does all of this (and a few more error cases) automatically. The table is the short version, if you'd rather click through by hand. Run the steps in order; each builds on the one before.
@@ -1631,3 +1801,13 @@ What it changes, all in one transaction:
 | 58 | As the engineer, resolve it again; as the admin, `{"status":"closed","reason":"..."}` | 200, 200 `status: "closed"` |
 | 59 | Close it again; as the engineer, try to change it | 409, 409 |
 | 60 | As the employee, `GET /tickets/<id>/history`; as the admin, `GET /admin/metrics` | Last row is the admin's close with the note; `closed_last_7_days` went up by 1 |
+| 61 | As the admin, `GET /admin/facilities` | 200, every building with its floors and seats, each with `is_active` and `active_ticket_count` |
+| 62 | `POST /admin/buildings` with a new name, then the same name in lowercase | 201, then 409 |
+| 63 | `POST /admin/buildings/<id>/floors` with `{"floor_number":-1}`, then again | 201, then 409 |
+| 64 | `POST /admin/floors/<floor id>/seats` with `{"seat_number":"B-12"}`, then `"b-12"` | 201, then 409 |
+| 65 | As the employee, `GET /buildings/<id>/floors` | 200, the new floor is offered |
+| 66 | `PATCH /admin/seats/<id>` with a new number; `PATCH /admin/buildings/<id>` with another building's name, then with `{}` | 200; 409, then 422 |
+| 67 | `PATCH /admin/buildings/<id>` with `{"is_active":false}`; as the employee, `GET /buildings`, `GET /buildings/<id>/floors` and `POST /tickets` there | 200; not listed, 404, 400 `… is no longer available` |
+| 68 | Reactivate it; `DELETE` the building, then its floor | 200; 409 (still has a floor), 409 (still has a seat) |
+| 69 | `DELETE /admin/buildings/{{buildingId}}` (the Tickets folder's ticket is there) | 409 `… Deactivate it instead.` |
+| 70 | `DELETE` the seat, the floor, the building; then the building again | 204 ×3, then 404 |

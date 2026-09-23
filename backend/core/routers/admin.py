@@ -2,10 +2,14 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 
 from deps import AdminUser, IdPath, require_role
 from schemas import (
+    AdminBuilding,
+    AdminBuildingTree,
+    AdminFloor,
+    AdminSeat,
     AdminTicketDetail,
     AdminTicketFilters,
     AdminMetrics,
@@ -13,13 +17,19 @@ from schemas import (
     AdminTicketListItem,
     AdminUserResponse,
     AssignmentRequest,
+    BuildingCreate,
+    BuildingUpdate,
     EngineerWorkload,
+    FloorCreate,
+    FloorUpdate,
     NoteResponse,
     RoleChangeRequest,
+    SeatCreate,
+    SeatUpdate,
     StatusChangeResponse,
     UserFilters,
 )
-from services import admin_ticket_service, admin_user_service
+from services import admin_ticket_service, admin_user_service, facility_service
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))]
@@ -96,3 +106,70 @@ def change_role(user_id: IdPath, body: RoleChangeRequest) -> dict[str, Any]:
     """
     return admin_user_service.change_role(user_id, body.role)
 
+
+
+# --- facilities -------------------------------------------------------------------
+# Deactivating hides a location from new tickets; existing tickets keep it. Delete is
+# only for a location nothing has used yet (a typo): otherwise 409, deactivate instead.
+
+
+@router.get("/facilities", response_model=list[AdminBuildingTree])
+def get_facilities() -> list[dict[str, Any]]:
+    """Every building, floor and seat, inactive ones too, each with its active (not closed) tickets."""
+    return facility_service.get_tree()
+
+
+@router.post("/buildings", status_code=status.HTTP_201_CREATED, response_model=AdminBuilding)
+def create_building(body: BuildingCreate) -> dict[str, Any]:
+    """Add a building. A name already used, ignoring case, returns 409."""
+    return facility_service.create_building(body.building_name)
+
+
+@router.patch("/buildings/{building_id}", response_model=AdminBuilding)
+def update_building(building_id: IdPath, body: BuildingUpdate) -> dict[str, Any]:
+    """Rename a building and/or (de)activate it. Its floors and seats are hidden while it's inactive."""
+    return facility_service.update_building(building_id, body.building_name, body.is_active)
+
+
+@router.delete("/buildings/{building_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_building(building_id: IdPath) -> None:
+    """Delete a building with no tickets and no floors. Otherwise 409."""
+    facility_service.delete_building(building_id)
+
+
+@router.post(
+    "/buildings/{building_id}/floors", status_code=status.HTTP_201_CREATED, response_model=AdminFloor
+)
+def create_floor(building_id: IdPath, body: FloorCreate) -> dict[str, Any]:
+    """Add a floor to a building. A number the building already has returns 409."""
+    return facility_service.create_floor(building_id, body.floor_number)
+
+
+@router.patch("/floors/{floor_id}", response_model=AdminFloor)
+def update_floor(floor_id: IdPath, body: FloorUpdate) -> dict[str, Any]:
+    """Renumber a floor and/or (de)activate it. Its seats are hidden while it's inactive."""
+    return facility_service.update_floor(floor_id, body.floor_number, body.is_active)
+
+
+@router.delete("/floors/{floor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_floor(floor_id: IdPath) -> None:
+    """Delete a floor with no tickets and no seats. Otherwise 409."""
+    facility_service.delete_floor(floor_id)
+
+
+@router.post("/floors/{floor_id}/seats", status_code=status.HTTP_201_CREATED, response_model=AdminSeat)
+def create_seat(floor_id: IdPath, body: SeatCreate) -> dict[str, Any]:
+    """Add a seat to a floor. A number the floor already has, ignoring case, returns 409."""
+    return facility_service.create_seat(floor_id, body.seat_number)
+
+
+@router.patch("/seats/{seat_id}", response_model=AdminSeat)
+def update_seat(seat_id: IdPath, body: SeatUpdate) -> dict[str, Any]:
+    """Renumber a seat and/or (de)activate it."""
+    return facility_service.update_seat(seat_id, body.seat_number, body.is_active)
+
+
+@router.delete("/seats/{seat_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_seat(seat_id: IdPath) -> None:
+    """Delete a seat no ticket has used. Otherwise 409."""
+    facility_service.delete_seat(seat_id)

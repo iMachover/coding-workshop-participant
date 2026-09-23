@@ -38,6 +38,7 @@ export const NAV_LINKS = {
   admin: [
     { to: '/admin', label: 'Dashboard', section: '/admin' },
     { to: '/admin/people', label: 'People', section: '/admin/people' },
+    { to: '/admin/facilities', label: 'Facilities', section: '/admin/facilities' },
   ],
 }
 

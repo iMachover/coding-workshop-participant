@@ -358,6 +358,106 @@ class AdminMetrics(BaseModel):
     closed_last_7_days: int
 
 
+# --- Facility Admin: facilities ---------------------------------------------------
+# Admins see every location, inactive ones too, with how many active (not closed) tickets
+# are there. Writes return the one item changed, without its children.
+
+BuildingName = Annotated[TrimmedText, StringConstraints(max_length=100)]
+# Basements are negative floors.
+FloorNumber = Annotated[int, Field(ge=-10, le=200)]
+SeatNumber = Annotated[TrimmedText, StringConstraints(max_length=20)]
+
+
+class AdminBuilding(BuildingResponse):
+    """A building as a Facility Admin sees it."""
+
+    is_active: bool
+    active_ticket_count: int
+
+
+class AdminFloor(FloorResponse):
+    """A floor as a Facility Admin sees it."""
+
+    is_active: bool
+    active_ticket_count: int
+
+
+class AdminSeat(SeatResponse):
+    """A seat as a Facility Admin sees it."""
+
+    is_active: bool
+    active_ticket_count: int
+
+
+class AdminFloorTree(AdminFloor):
+    """A floor with its seats, for the facilities page."""
+
+    seats: list[AdminSeat]
+
+
+class AdminBuildingTree(AdminBuilding):
+    """A building with its floors and their seats, for the facilities page."""
+
+    floors: list[AdminFloorTree]
+
+
+class BuildingCreate(BaseModel):
+    """A new building. Names are unique, ignoring case."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    building_name: BuildingName
+
+
+class FloorCreate(BaseModel):
+    """A new floor. Numbers are unique within a building."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    floor_number: FloorNumber
+
+
+class SeatCreate(BaseModel):
+    """A new seat. Numbers are text (e.g. "12A") and unique on a floor, ignoring case."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    seat_number: SeatNumber
+
+
+class _LocationUpdate(BaseModel):
+    """Shared by the PATCH bodies: send only what changes, but send something."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def something_to_change(self) -> Self:
+        """An empty body (or only nulls) would be a no-op, which is almost certainly a mistake."""
+        if all(value is None for value in self.model_dump().values()):
+            raise ValueError("Nothing to change")
+        return self
+
+
+class BuildingUpdate(_LocationUpdate):
+    """Rename a building and/or set whether it's active."""
+
+    building_name: BuildingName | None = None
+
+
+class FloorUpdate(_LocationUpdate):
+    """Renumber a floor and/or set whether it's active."""
+
+    floor_number: FloorNumber | None = None
+
+
+class SeatUpdate(_LocationUpdate):
+    """Renumber a seat and/or set whether it's active."""
+
+    seat_number: SeatNumber | None = None
+
+
 # --- Engineer -------------------------------------------------------------------
 # Engineers work their tickets with the same staff views as admins (AdminTicketListItem,
 # AdminTicketDetail): priority and the requester's contact details included.

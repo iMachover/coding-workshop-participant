@@ -44,6 +44,16 @@ ADMIN_ONLY = [
     ("GET", "/admin/engineers", None),
     ("GET", "/admin/users", None),
     ("PUT", "/admin/users/{user_id}/role", {"role": "engineer"}),
+    ("GET", "/admin/facilities", None),
+    ("POST", "/admin/buildings", {"building_name": "Annex"}),
+    ("PATCH", "/admin/buildings/{building_id}", {"is_active": False}),
+    ("DELETE", "/admin/buildings/{building_id}", None),
+    ("POST", "/admin/buildings/{building_id}/floors", {"floor_number": 9}),
+    ("PATCH", "/admin/floors/{floor_id}", {"is_active": False}),
+    ("DELETE", "/admin/floors/{floor_id}", None),
+    ("POST", "/admin/floors/{floor_id}/seats", {"seat_number": "999"}),
+    ("PATCH", "/admin/seats/{seat_id}", {"is_active": False}),
+    ("DELETE", "/admin/seats/{seat_id}", None),
 ]
 
 ENGINEER_ONLY = [
@@ -61,6 +71,7 @@ def _url(path: str, ticket_id: int = 1) -> str:
         path.replace("{ticket_id}", str(ticket_id))
         .replace("{building_id}", "1")
         .replace("{floor_id}", "1")
+        .replace("{seat_id}", "1")
         .replace("{user_id}", "1")
     )
 

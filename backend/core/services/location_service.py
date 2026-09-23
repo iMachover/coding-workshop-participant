@@ -1,4 +1,8 @@
-"""Location lookups for the building -> floor -> seat dropdowns."""
+"""Location lookups for the building -> floor -> seat dropdowns.
+
+Only active locations are offered. A building or floor that's been deactivated (or sits
+in an inactive building) answers 404, the same as one that doesn't exist.
+"""
 
 from typing import Any
 
@@ -8,22 +12,26 @@ from repositories import location_repository
 
 
 def list_buildings() -> list[dict[str, Any]]:
-    """Return every building."""
+    """Return every active building."""
     with db.transaction() as conn:
         return location_repository.list_buildings(conn)
 
 
 def list_floors(building_id: int) -> list[dict[str, Any]]:
-    """Return a building's floors. Raises NotFoundError if the building doesn't exist."""
+    """Return an active building's active floors. Raises NotFoundError otherwise."""
     with db.transaction() as conn:
-        if location_repository.get_building(conn, building_id) is None:
+        building = location_repository.get_building(conn, building_id)
+        if building is None or not building["is_active"]:
             raise NotFoundError("Building not found")
         return location_repository.list_floors(conn, building_id)
 
 
 def list_seats(floor_id: int) -> list[dict[str, Any]]:
-    """Return a floor's seats. Raises NotFoundError if the floor doesn't exist."""
+    """Return an active floor's active seats. Raises NotFoundError otherwise, or if its building is inactive."""
     with db.transaction() as conn:
-        if location_repository.get_floor(conn, floor_id) is None:
+        floor = location_repository.get_floor(conn, floor_id)
+        if floor is None or not floor["is_active"]:
+            raise NotFoundError("Floor not found")
+        if not location_repository.get_building(conn, floor["building_id"])["is_active"]:
             raise NotFoundError("Floor not found")
         return location_repository.list_seats(conn, floor_id)

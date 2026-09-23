@@ -369,12 +369,114 @@ test('an admin closes one resolved ticket and sends another back', async ({ page
   })
 })
 
+/**
+ * F1 through the UI: open Facilities -> add a building, floor and seat (a duplicate seat
+ * is refused) -> the employee can pick it -> once a ticket is there, delete is refused and
+ * the admin deactivates it instead -> the employee can't pick it any more, but their
+ * ticket keeps it -> the building's ticket count opens the dashboard filtered to it.
+ */
+test('an admin manages facilities, and employees only see active ones', async ({ page, browser, request }) => {
+  const stamp = Date.now()
+  const annex = `Annex ${stamp}`
+  const admin = await registerAdmin(request)
+  const employee = await registerViaApi(request, { name: 'Dana Requester', email: uniqueEmail('dana') })
+
+  // The employee is signed in elsewhere, reporting issues.
+  const employeePage = await (await browser.newContext()).newPage()
+  await signIn(employeePage, employee.email)
+  const employeeBuildings = async () => {
+    await employeePage.goto('/tickets/new')
+    await employeePage.getByRole('combobox', { name: /^Building/ }).click()
+    await expect(employeePage.getByRole('option', { name: 'Building A', exact: true })).toBeVisible()
+    const names = await employeePage.getByRole('option').allTextContents()
+    await employeePage.keyboard.press('Escape')
+    return names
+  }
+
+  await signIn(page, admin.email, { home: ADMIN_HOME })
+  const details = page.getByRole('region', { name: annex })
+  const dialog = page.getByRole('dialog')
+
+  await test.step('open Facilities from the header', async () => {
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Facilities' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Facilities' })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Buildings' }).getByRole('button', { name: /^Building A/ })).toBeVisible()
+  })
+
+  await test.step('add a building, a floor and a seat', async () => {
+    await page.getByRole('button', { name: 'Add building' }).click()
+    await dialog.getByRole('textbox', { name: 'Building name' }).fill(annex)
+    await dialog.getByRole('button', { name: 'Add building' }).click()
+    await expect(page.getByText(`Added ${annex}.`)).toBeVisible()
+    await expect(details.getByRole('heading', { level: 2 })).toHaveText(annex)
+
+    await details.getByRole('button', { name: `Add a floor to ${annex}` }).click()
+    await dialog.getByRole('textbox', { name: 'Floor number' }).fill('-1')
+    await dialog.getByRole('button', { name: 'Add floor' }).click()
+    await expect(page.getByText(`Added Floor -1 to ${annex}.`)).toBeVisible()
+
+    await details.getByRole('button', { name: /^Floor -1,/ }).click()
+    await details.getByRole('button', { name: 'Add a seat to Floor -1' }).click()
+    await dialog.getByRole('textbox', { name: 'Seat number' }).fill('B-12')
+    await dialog.getByRole('button', { name: 'Add seat' }).click()
+    await expect(details.getByRole('group', { name: 'Seats on Floor -1' }).getByRole('button', { name: 'Seat B-12' })).toBeVisible()
+  })
+
+  await test.step('the same seat in another case is refused in the dialog', async () => {
+    await details.getByRole('button', { name: 'Add a seat to Floor -1' }).click()
+    await dialog.getByRole('textbox', { name: 'Seat number' }).fill('b-12')
+    await dialog.getByRole('button', { name: 'Add seat' }).click()
+    await expect(dialog).toContainText('Floor -1 already has seat b-12')
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toHaveCount(0)
+  })
+
+  await test.step('the employee can pick the new building', async () => {
+    expect(await employeeBuildings()).toContain(annex)
+  })
+
+  const annexId = Number(sql(`SELECT building_id FROM buildings WHERE building_name = '${annex}'`))
+  const ticket = await createTicketViaApi(request, employee, { title: `Annex door ${stamp}`, building_id: annexId })
+
+  await test.step('once a ticket is there, delete is refused and it is deactivated instead', async () => {
+    await page.reload()
+    await page.getByRole('list', { name: 'Buildings' }).getByRole('button', { name: new RegExp(`^${annex}`) }).click()
+    await expect(details).toContainText('1 active ticket')
+
+    await details.getByRole('button', { name: `Delete ${annex}` }).click()
+    await dialog.getByRole('button', { name: 'Delete' }).click()
+    await expect(dialog.getByRole('alert')).toContainText(`${annex} has 1 ticket, so it can't be deleted. Deactivate it instead.`)
+    await dialog.getByRole('button', { name: 'Deactivate instead' }).click()
+
+    await expect(dialog).toHaveAccessibleName(`Deactivate ${annex}?`)
+    await expect(dialog).toContainText('Its active ticket keeps this location.')
+    await dialog.getByRole('button', { name: 'Deactivate' }).click()
+    await expect(page.getByText(`${annex} is inactive. Employees can't pick it for new tickets.`)).toBeVisible()
+    await expect(details.getByText('Inactive', { exact: true })).toBeVisible()
+    await expect(details.getByRole('button', { name: `Reactivate ${annex}` })).toBeVisible()
+  })
+
+  await test.step("the employee can't pick it any more, but their ticket keeps it", async () => {
+    expect(await employeeBuildings()).not.toContain(annex)
+    await employeePage.goto(`/tickets/${ticket.ticket_id}`)
+    await expect(employeePage.getByRole('main')).toContainText(annex)
+    await employeePage.context().close()
+  })
+
+  await test.step("the building's ticket count opens its tickets on the dashboard", async () => {
+    await details.getByRole('link', { name: '1 active ticket' }).click()
+    await expect(page).toHaveURL(new RegExp(`/admin\\?building=${annexId}$`))
+    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText([ticket.title])
+    await expect(page.getByRole('combobox', { name: /^Building/ })).toHaveText(`${annex} (inactive)`)
+  })
+})
+
 test('employees cannot open the admin pages', async ({ page, request }) => {
   const { lights } = await seedTickets(request)
   const employee = await registerViaApi(request, { name: 'Curious Employee' })
 
   await signIn(page, employee.email)
-  for (const path of ['/admin', `/admin/tickets/${lights.ticket_id}`]) {
+  for (const path of ['/admin', `/admin/tickets/${lights.ticket_id}`, '/admin/people', '/admin/facilities']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1, name: "You don't have access to this" })).toBeVisible()
     await expect(page.getByText(lights.title)).toHaveCount(0)
@@ -384,7 +486,7 @@ test('employees cannot open the admin pages', async ({ page, request }) => {
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })
 
-  test('the admin dashboard, ticket details and People fit the screen', async ({ page, request }) => {
+  test('the admin dashboard, ticket details, People and Facilities fit the screen', async ({ page, request }) => {
     const { stamp, lights } = await seedTickets(request)
     const admin = await registerAdmin(request)
 
@@ -409,6 +511,16 @@ test.describe('on a phone', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'People' })).toBeVisible()
     await expect(page.getByRole('table')).toHaveCount(0)
     await expect(page.getByRole('listitem').filter({ hasText: admin.email })).toContainText('Facility Admin')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+
+    // Facilities: a building dropdown instead of the list, and the floors below it.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Facilities' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Facilities' })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Buildings' })).toHaveCount(0)
+    await choose(page, 'Building', 'Building B')
+    const building = page.getByRole('region', { name: 'Building B' })
+    await building.getByRole('button', { name: /^Floor 2,/ }).click()
+    await expect(building.getByRole('group', { name: 'Seats on Floor 2' }).getByRole('button', { name: 'Seat 201' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
   })
 })

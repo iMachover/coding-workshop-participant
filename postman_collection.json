@@ -20,7 +20,10 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "pm.test('Response is JSON', () => pm.response.to.be.json);"
+          "// 204 No Content (the deletes) has no body; every other response is JSON.",
+          "if (pm.response.code !== 204) {",
+          "  pm.test('Response is JSON', () => pm.response.to.be.json);",
+          "}"
         ]
       }
     }
@@ -123,6 +126,30 @@
     },
     {
       "key": "closedBefore",
+      "value": ""
+    },
+    {
+      "key": "facilityName",
+      "value": ""
+    },
+    {
+      "key": "facilityNameLower",
+      "value": ""
+    },
+    {
+      "key": "existingBuildingName",
+      "value": ""
+    },
+    {
+      "key": "facilityBuildingId",
+      "value": ""
+    },
+    {
+      "key": "facilityFloorId",
+      "value": ""
+    },
+    {
+      "key": "facilitySeatId",
       "value": ""
     }
   ],
@@ -5112,6 +5139,1260 @@
                 {
                   "key": "token",
                   "value": "{{engineerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"You don't have access to this.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - facilities",
+      "description": "Facility Admins adding, renaming, deactivating and deleting buildings, floors and seats. Adds its own building (a new name each run) and deletes it at the end; needs the admin variables and the Tickets folder's ticket.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{adminAccessToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Needs the admin token (see Setup step 3 in postman_testing.md).",
+              "if (!pm.collectionVariables.get('adminAccessToken')) {",
+              "  console.warn(`Skipped \"${pm.info.requestName}\": no adminAccessToken.`);",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Facilities tree",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/facilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "facilities"
+              ]
+            },
+            "description": "Every building, floor and seat, inactive ones too, each with its active (not closed) tickets. Saves a building name for the duplicate-name check."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tree = pm.response.json();",
+                  "pm.test('At least one building', () => pm.expect(tree).to.be.an('array').that.is.not.empty);",
+                  "pm.test('Building shape', () => pm.expect(tree[0]).to.have.all.keys('building_id', 'building_name', 'is_active', 'active_ticket_count', 'floors'));",
+                  "const floor = tree.flatMap((b) => b.floors)[0];",
+                  "pm.test('Floor shape', () => pm.expect(floor).to.have.all.keys('floor_id', 'floor_number', 'building_id', 'is_active', 'active_ticket_count', 'seats'));",
+                  "pm.collectionVariables.set('existingBuildingName', tree[0].building_name);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add building",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings"
+              ]
+            },
+            "description": "A new name each run, so the collection can be re-run. Everything this folder adds is deleted at the end.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"{{facilityName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unique per run; the lowercase copy checks names are unique ignoring case.",
+                  "const name = `Postman Annex ${Date.now()}`;",
+                  "pm.collectionVariables.set('facilityName', name);",
+                  "pm.collectionVariables.set('facilityNameLower', name.toLowerCase());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const building = pm.response.json();",
+                  "pm.test('Active, no tickets yet', () => pm.expect(building).to.eql({ building_id: building.building_id, building_name: pm.collectionVariables.get('facilityName'), is_active: true, active_ticket_count: 0 }));",
+                  "pm.collectionVariables.set('facilityBuildingId', building.building_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add building - same name, other case (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings"
+              ]
+            },
+            "description": "Building names are unique ignoring case.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"{{facilityNameLower}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`There's already a building called ${pm.collectionVariables.get('facilityNameLower')}`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add building - blank name (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings"
+              ]
+            },
+            "description": "Names are trimmed, then need 1-100 characters.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at building_name', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'building_name']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add floor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}",
+                "floors"
+              ]
+            },
+            "description": "Floor numbers go from -10 to 200, so basements work.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor_number\": -1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const floor = pm.response.json();",
+                  "pm.test('A basement in the new building', () => {",
+                  "  pm.expect(floor.floor_number).to.eql(-1);",
+                  "  pm.expect(floor.building_id).to.eql(Number(pm.collectionVariables.get('facilityBuildingId')));",
+                  "  pm.expect(floor.is_active).to.be.true;",
+                  "});",
+                  "pm.collectionVariables.set('facilityFloorId', floor.floor_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add floor - number in use (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}",
+                "floors"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor_number\": -1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`${pm.collectionVariables.get('facilityName')} already has floor -1`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add floor - out of range (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}",
+                "floors"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor_number\": 201\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at floor_number', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'floor_number']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add floor - unknown building (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{missingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{missingId}}",
+                "floors"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor_number\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Building not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add seat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/floors/{{facilityFloorId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "floors",
+                "{{facilityFloorId}}",
+                "seats"
+              ]
+            },
+            "description": "Seat numbers are text (1-20 characters).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seat_number\": \"B-12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const seat = pm.response.json();",
+                  "pm.test('On the new floor', () => {",
+                  "  pm.expect(seat.seat_number).to.eql('B-12');",
+                  "  pm.expect(seat.floor_id).to.eql(Number(pm.collectionVariables.get('facilityFloorId')));",
+                  "  pm.expect(seat).to.have.all.keys('seat_id', 'seat_number', 'floor_id', 'is_active', 'active_ticket_count');",
+                  "});",
+                  "pm.collectionVariables.set('facilitySeatId', seat.seat_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add seat - same number, other case (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/floors/{{facilityFloorId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "floors",
+                "{{facilityFloorId}}",
+                "seats"
+              ]
+            },
+            "description": "Seat numbers are unique on a floor, ignoring case.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seat_number\": \"b-12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Floor -1 already has seat b-12\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tree - includes the new building",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/facilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "facilities"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const id = Number(pm.collectionVariables.get('facilityBuildingId'));",
+                  "const building = pm.response.json().find((b) => b.building_id === id);",
+                  "pm.test('Building, floor and seat are there', () => {",
+                  "  pm.expect(building.floors.map((f) => f.floor_number)).to.eql([-1]);",
+                  "  pm.expect(building.floors[0].seats.map((s) => s.seat_number)).to.eql(['B-12']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List floors - the employee sees the new floor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings/{{facilityBuildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings",
+                "{{facilityBuildingId}}",
+                "floors"
+              ]
+            },
+            "description": "Uses the employee's token: new locations show up in the create-ticket dropdowns straight away.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('The basement is offered', () => pm.expect(pm.response.json().map((f) => f.floor_number)).to.eql([-1]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename seat",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/seats/{{facilitySeatId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "seats",
+                "{{facilitySeatId}}"
+              ]
+            },
+            "description": "Send only what changes: a new number, is_active, or both.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seat_number\": \"B-12A\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Renamed', () => pm.expect(pm.response.json().seat_number).to.eql('B-12A'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renumber floor",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/floors/{{facilityFloorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "floors",
+                "{{facilityFloorId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor_number\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Renumbered', () => pm.expect(pm.response.json().floor_number).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename building - name in use (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"{{existingBuildingName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`There's already a building called ${pm.collectionVariables.get('existingBuildingName')}`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change building - nothing to change (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Says why', () => pm.expect(pm.response.json().detail[0].msg).to.eql('Value error, Nothing to change'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate building",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": "Hides it, and every floor and seat in it, from new tickets. Tickets already there keep their location.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Inactive', () => pm.expect(pm.response.json().is_active).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List buildings - the employee no longer sees it",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const id = Number(pm.collectionVariables.get('facilityBuildingId'));",
+                  "pm.test('Not offered', () => pm.expect(pm.response.json().map((b) => b.building_id)).to.not.include(id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List floors - inactive building (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buildings/{{facilityBuildingId}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "buildings",
+                "{{facilityBuildingId}}",
+                "floors"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Building not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create ticket - inactive building (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "description": "Uses the employee's token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Annex door sticks\",\n  \"short_description\": \"Hard to open\",\n  \"description\": \"The main door of the annex sticks.\",\n  \"category\": \"building_facilities\",\n  \"urgency\": \"low\",\n  \"affected_scope\": \"building\",\n  \"building_id\": {{facilityBuildingId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`${pm.collectionVariables.get('facilityName')} is no longer available`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reactivate building",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Active again', () => pm.expect(pm.response.json().is_active).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete building - still has floors (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`${pm.collectionVariables.get('facilityName')} still has 1 floor. Delete them first, or deactivate it instead.`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete floor - still has seats (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/floors/{{facilityFloorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "floors",
+                "{{facilityFloorId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Floor 0 still has 1 seat. Delete them first, or deactivate it instead.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete building - tickets use it (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{buildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{buildingId}}"
+              ]
+            },
+            "description": "The Tickets folder reported a ticket here, so it can only be deactivated."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Says to deactivate instead', () => pm.expect(pm.response.json().detail).to.match(/ has \\d+ tickets?, so it can't be deleted\\. Deactivate it instead\\.$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete seat",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/seats/{{facilitySeatId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "seats",
+                "{{facilitySeatId}}"
+              ]
+            },
+            "description": "Nothing has used it, so it can go."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));",
+                  "pm.test('No body', () => pm.expect(pm.response.text()).to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete floor",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/floors/{{facilityFloorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "floors",
+                "{{facilityFloorId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete building",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete building - already gone (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings/{{facilityBuildingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings",
+                "{{facilityBuildingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Building not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add building - as an employee (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "buildings"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"Not allowed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
                   "type": "string"
                 }
               ]

@@ -16,8 +16,8 @@ import useAllTickets from '../hooks/useAllTickets'
 import useApiData from '../hooks/useApiData'
 import useDebouncedValue from '../hooks/useDebouncedValue'
 import { getMetrics } from '../services/adminTicketService'
+import { getFacilities } from '../services/adminFacilityService'
 import { listEngineers } from '../services/adminUserService'
-import { listBuildings } from '../services/locationService'
 import { METRIC_CARDS, selectedMetric } from '../utils/adminMetrics'
 
 const DEFAULT_FILTERS = {
@@ -36,6 +36,9 @@ const adminTicketPath = (ticket) => `/admin/tickets/${ticket.ticket_id}`
 
 // Active tickets with no engineer, in the API's triage order (P1 first, then oldest).
 const UNASSIGNED = { assignment: 'unassigned', view: 'active' }
+
+/** A database id from the URL, or '' if it isn't one. */
+const idParam = (value) => (/^[1-9]\d{0,9}$/.test(value ?? '') ? value : '')
 
 /**
  * Turn the filter controls into API query params. Blank selects and an off switch are
@@ -62,18 +65,21 @@ function toQuery(filters, search) {
  * unassigned tickets that need an engineer (assignable in place), each engineer's
  * workload, then every ticket with search and filters.
  * Priority shows everywhere here. `?engineer=<id>` opens it filtered to that engineer
- * (the People page links here that way).
+ * (the People page links here that way), and `?building=<id>` to that building (from
+ * the Facilities page). The Building filter lists inactive buildings too, since their
+ * tickets are still here.
  */
 function AdminDashboardPage() {
   const [searchParams] = useSearchParams()
   const metrics = useApiData(getMetrics)
   const queue = useAllTickets(UNASSIGNED)
   const engineers = useApiData(listEngineers)
-  const buildings = useApiData(listBuildings)
-  const [filters, setFilters] = useState(() => {
-    const engineer = searchParams.get('engineer') ?? ''
-    return { ...DEFAULT_FILTERS, assigned_to: /^[1-9]\d{0,9}$/.test(engineer) ? engineer : '' }
-  })
+  const facilities = useApiData(getFacilities)
+  const [filters, setFilters] = useState(() => ({
+    ...DEFAULT_FILTERS,
+    assigned_to: idParam(searchParams.get('engineer')),
+    building_id: idParam(searchParams.get('building')),
+  }))
   const [notice, setNotice] = useState('')
   const search = useDebouncedValue(filters.q.trim(), 300)
   const list = useAllTickets(toQuery(filters, search))
@@ -134,7 +140,7 @@ function AdminDashboardPage() {
         <AdminTicketFilters
           values={filters}
           onChange={setFilters}
-          buildings={buildings.data ?? []}
+          buildings={facilities.data ?? []}
           engineers={engineers.data ?? []}
         />
         <TicketListSection list={list} filtersActive={filtersActive} onClearFilters={() => setFilters(DEFAULT_FILTERS)}>

@@ -39,13 +39,15 @@ $$;
 
 CREATE TABLE IF NOT EXISTS buildings (
     building_id   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    building_name TEXT NOT NULL UNIQUE
+    building_name TEXT NOT NULL UNIQUE,
+    is_active     BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE IF NOT EXISTS floors (
     floor_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     floor_number INTEGER NOT NULL,
     building_id  INTEGER NOT NULL REFERENCES buildings (building_id),
+    is_active    BOOLEAN NOT NULL DEFAULT true,
     UNIQUE (building_id, floor_number)
 );
 
@@ -53,8 +55,21 @@ CREATE TABLE IF NOT EXISTS seats (
     seat_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     seat_number TEXT NOT NULL,
     floor_id    INTEGER NOT NULL REFERENCES floors (floor_id),
+    is_active   BOOLEAN NOT NULL DEFAULT true,
     UNIQUE (floor_id, seat_number)
 );
+
+-- Facility Admins deactivate a location instead of deleting it once tickets use it. An
+-- inactive one (or one under an inactive building or floor) is hidden from new tickets.
+-- Databases created before this get the column here; existing locations stay active.
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE floors ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE seats ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+-- Admins type these names, so "building a" and "Building A" count as the same building,
+-- and "12a" and "12A" as the same seat on a floor.
+CREATE UNIQUE INDEX IF NOT EXISTS buildings_name_ci_key ON buildings (lower(building_name));
+CREATE UNIQUE INDEX IF NOT EXISTS seats_floor_number_ci_key ON seats (floor_id, lower(seat_number));
 
 CREATE TABLE IF NOT EXISTS tickets (
     ticket_id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

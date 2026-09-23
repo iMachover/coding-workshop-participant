@@ -3,16 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
+import { getFacilities } from '../services/adminFacilityService'
 import { assignTicket, getMetrics, listAllTickets } from '../services/adminTicketService'
 import { listEngineers } from '../services/adminUserService'
 import { ApiError } from '../services/apiClient'
-import { listBuildings } from '../services/locationService'
 import { ADMIN_TICKETS, ENGINEERS } from '../test/fixtures'
 import { ALEX, renderWithProviders } from '../test/renderWithProviders'
 
 vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn(), assignTicket: vi.fn(), getMetrics: vi.fn() }))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
-vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
+vi.mock('../services/adminFacilityService', () => ({ getFacilities: vi.fn() }))
 
 // GET /admin/metrics for ADMIN_TICKETS.
 const METRICS = {
@@ -26,9 +26,11 @@ const METRICS = {
   closed_last_7_days: 1,
 }
 
+// GET /admin/facilities, trimmed to what the Building filter reads. Building B is inactive,
+// but its tickets are still here, so admins can still filter by it.
 const BUILDINGS = [
-  { building_id: 1, building_name: 'Building A' },
-  { building_id: 2, building_name: 'Building B' },
+  { building_id: 1, building_name: 'Building A', is_active: true, active_ticket_count: 2, floors: [] },
+  { building_id: 2, building_name: 'Building B', is_active: false, active_ticket_count: 1, floors: [] },
 ]
 
 /** Serve ADMIN_TICKETS like the API would for the given filters (order is already triage order). */
@@ -74,7 +76,7 @@ async function choose(user, label, option) {
 
 beforeEach(() => {
   vi.mocked(listAllTickets).mockReset().mockImplementation(fakeApi)
-  vi.mocked(listBuildings).mockReset().mockResolvedValue(BUILDINGS)
+  vi.mocked(getFacilities).mockReset().mockResolvedValue(BUILDINGS)
   vi.mocked(listEngineers).mockReset().mockResolvedValue(ENGINEERS)
   vi.mocked(assignTicket).mockReset()
   vi.mocked(getMetrics).mockReset().mockResolvedValue(METRICS)
@@ -316,10 +318,27 @@ describe('AdminDashboardPage: engineer workload', () => {
     expect(await within(workload()).findByRole('button', { name: /^Sam Tech/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('ignores a malformed ?engineer=', async () => {
-    renderWithProviders(<App />, { route: '/admin?engineer=abc', user: ALEX })
+  it('ignores a malformed ?engineer= or ?building=', async () => {
+    renderWithProviders(<App />, { route: '/admin?engineer=abc&building=0', user: ALEX })
     await screen.findByRole('table')
     expect(lastListFilters()).toEqual({ view: 'active' })
+  })
+
+  it('opens filtered to a building from ?building=, inactive ones included', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<App />, { route: '/admin?building=2', user: ALEX })
+    await screen.findByRole('table')
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']))
+    expect(lastListFilters()).toEqual({ view: 'active', building_id: '2' })
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Building' })).toHaveTextContent('Building B (inactive)'))
+
+    await user.click(screen.getByRole('combobox', { name: 'Building' }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'All buildings',
+      'Building A',
+      'Building B (inactive)',
+    ])
   })
 
   it('has an Engineer filter too', async () => {
