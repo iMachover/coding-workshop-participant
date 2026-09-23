@@ -4,7 +4,7 @@ import { choose, PASSWORD, uniqueEmail } from './helpers.js'
 
 /**
  * The critical employee path, end to end through the UI:
- * register -> sign in -> create a ticket -> add a note -> escalate -> see it on the
+ * register -> sign in -> create a ticket (recorded as opened) -> add a note -> escalate -> see it on the
  * dashboard -> search -> sign out.
  */
 test('an employee reports an issue and follows it through', async ({ page }) => {
@@ -67,6 +67,11 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
     const details = page.getByRole('region', { name: 'Details' })
     await expect(details).toContainText('Building A · Floor 3 · Seat 301')
     await expect(details).toContainText('Not assigned yet')
+
+    const history = page.getByRole('list', { name: 'Status history' }).getByRole('listitem')
+    await expect(history).toHaveCount(1)
+    await expect(history).toContainText('Opened')
+    await expect(history).toContainText('You · Employee')
   })
 
   await test.step('add a note', async () => {

@@ -20,6 +20,14 @@ export function getMyTicket({ ticketId }, { signal } = {}) {
   return api.get(`/tickets/${Number(ticketId)}`, { signal })
 }
 
+/**
+ * Every status a ticket has been in, oldest first, with who changed it.
+ * The first row is its creation (from_status null).
+ */
+export function listStatusHistory({ ticketId }, { signal } = {}) {
+  return api.get(`/tickets/${Number(ticketId)}/history`, { signal })
+}
+
 /** A ticket's notes, oldest first, with author name and role. */
 export function listNotes({ ticketId }, { signal } = {}) {
   return api.get(`/tickets/${Number(ticketId)}/notes`, { signal })

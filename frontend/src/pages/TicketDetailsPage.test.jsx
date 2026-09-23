@@ -9,6 +9,7 @@ import {
   getMyTicket,
   listMyTickets,
   listNotes,
+  listStatusHistory,
   requestEscalation,
 } from '../services/ticketService'
 import { makeTicket, TICKETS } from '../test/fixtures'
@@ -17,6 +18,7 @@ import { JANE, renderWithProviders } from '../test/renderWithProviders'
 vi.mock('../services/ticketService', () => ({
   getMyTicket: vi.fn(),
   listNotes: vi.fn(),
+  listStatusHistory: vi.fn(),
   addNote: vi.fn(),
   requestEscalation: vi.fn(),
   listMyTickets: vi.fn(),
@@ -47,6 +49,31 @@ const NOTES = [
   { note_id: 2, ticket_id: 5, user_id: JANE.user_id, author_name: 'Jane Doe', author_role: 'employee', note_text: 'Thanks!', created_at: '2026-09-22T11:20:00-04:00' },
 ]
 
+const change = (history_id, from_status, to_status, extra = {}) => ({
+  history_id,
+  ticket_id: 5,
+  from_status,
+  to_status,
+  changed_by_user_id: 4,
+  changed_by_name: 'Sam Tech',
+  changed_by_role: 'engineer',
+  reason: null,
+  changed_at: `2026-09-22T1${history_id}:00:00-04:00`,
+  ...extra,
+})
+
+const OPENED = change(1, null, 'open', { changed_by_user_id: JANE.user_id, changed_by_name: 'Jane Doe', changed_by_role: 'employee' })
+
+// Open -> In progress -> Blocked -> In progress -> Resolved -> reopened.
+const HISTORY = [
+  OPENED,
+  change(2, 'open', 'in_progress'),
+  change(3, 'in_progress', 'blocked', { reason: 'Waiting on a roller' }),
+  change(4, 'blocked', 'in_progress'),
+  change(5, 'in_progress', 'resolved'),
+  change(6, 'resolved', 'open', { changed_by_user_id: 9, changed_by_name: 'Ada Admin', changed_by_role: 'admin', reason: 'Jammed again the next day' }),
+]
+
 function renderPage(route = '/tickets/5', width = 1280) {
   const user = userEvent.setup()
   renderWithProviders(<App />, { route, user: JANE, width })
@@ -59,6 +86,7 @@ const heading = () => screen.findByRole('heading', { level: 1, name: '#5 Printer
 beforeEach(() => {
   vi.mocked(getMyTicket).mockReset().mockResolvedValue(TICKET)
   vi.mocked(listNotes).mockReset().mockResolvedValue(NOTES)
+  vi.mocked(listStatusHistory).mockReset().mockResolvedValue([OPENED])
   vi.mocked(addNote).mockReset()
   vi.mocked(requestEscalation).mockReset()
   vi.mocked(listMyTickets).mockReset().mockResolvedValue(TICKETS)
@@ -169,6 +197,72 @@ describe('TicketDetailsPage: the ticket', () => {
     renderPage('/tickets/5', 375)
     await heading()
     expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveStyle({ flexDirection: 'column' })
+  })
+})
+
+describe('TicketDetailsPage: status history', () => {
+  const rows = async () => within(panel('Status history')).findAllByRole('listitem')
+
+  it('shows a new ticket as opened by you', async () => {
+    renderPage()
+    await heading()
+    const items = await rows()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toHaveTextContent(/^OpenedYou · Employee · .+$/)
+    expect(listStatusHistory).toHaveBeenCalledWith({ ticketId: '5' }, expect.anything())
+  })
+
+  it('lists every step oldest first, with who made it and why', async () => {
+    vi.mocked(listStatusHistory).mockResolvedValue(HISTORY)
+    renderPage()
+    await heading()
+    const items = await rows()
+
+    expect(items.map((li) => li.firstChild.textContent)).toEqual([
+      'Opened',
+      'In Progress',
+      'Blocked',
+      'Unblocked → In Progress',
+      'Resolved',
+      'Reopened → Open',
+    ])
+    expect(items[1]).toHaveTextContent(/^In ProgressSam Tech · Engineer · /)
+    expect(items[2]).toHaveTextContent(/Waiting on a roller$/)
+    expect(items[5]).toHaveTextContent(/^Reopened → OpenAda Admin · Facility admin · .+Jammed again the next day$/)
+    expect(document.body).not.toHaveTextContent(/priority|\bP[123]\b/i)
+  })
+
+  it('shows a placeholder while the history loads', async () => {
+    vi.mocked(listStatusHistory).mockReturnValue(new Promise(() => {}))
+    renderPage()
+    await heading()
+    expect(within(panel('Status history')).getByLabelText('Loading status history')).toBeInTheDocument()
+  })
+
+  it('says when there is no history', async () => {
+    vi.mocked(listStatusHistory).mockResolvedValue([])
+    renderPage()
+    await heading()
+    expect(await within(panel('Status history')).findByText('No status changes yet.')).toBeInTheDocument()
+  })
+
+  it('explains a failed history load and retries', async () => {
+    vi.mocked(listStatusHistory)
+      .mockRejectedValueOnce(new ApiError("Can't reach the server.", { status: 0 }))
+      .mockResolvedValue(HISTORY)
+    const user = renderPage()
+    await heading()
+
+    const history = within(panel('Status history'))
+    await user.click(await history.findByRole('button', { name: 'Try again' }))
+    expect(await history.findByText('Reopened → Open')).toBeInTheDocument()
+  })
+
+  it('works on a phone', async () => {
+    vi.mocked(listStatusHistory).mockResolvedValue(HISTORY)
+    renderPage('/tickets/5', 375)
+    await heading()
+    expect(await rows()).toHaveLength(6)
   })
 })
 

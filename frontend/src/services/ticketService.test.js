@@ -7,19 +7,22 @@ import {
   getMyTicket,
   listMyTickets,
   listNotes,
+  listStatusHistory,
   requestEscalation,
 } from './ticketService'
 
 describe('ticketService: details, notes and escalation', () => {
-  it('reads a ticket and its notes', async () => {
+  it('reads a ticket, its status history and its notes', async () => {
     const get = vi.spyOn(api, 'get').mockResolvedValue({})
     const { signal } = new AbortController()
 
     await getMyTicket({ ticketId: '5' }, { signal })
+    await listStatusHistory({ ticketId: '5' }, { signal })
     await listNotes({ ticketId: 5 })
 
     expect(get.mock.calls).toEqual([
       ['/tickets/5', { signal }],
+      ['/tickets/5/history', { signal }],
       ['/tickets/5/notes', { signal: undefined }],
     ])
   })

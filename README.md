@@ -97,6 +97,7 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_roles.py` | The `roles` table: new users get `employee`, unknown roles are rejected, and `schema.sql` moves an older database's `users.role` text into `role_id` |
 | `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); shared routes work for every role |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
+| `test_status_history.py` | Creating a ticket records it as opened, a reopened ticket keeps every step in order, the table's constraints, and `schema.sql` backfilling tickets made before the history existed |
 
 CI runs `bandit -r ./backend`. `backend/.bandit` skips `tests/` folders there, since tests use `assert` and fake passwords on purpose.
 
@@ -259,6 +260,14 @@ curl -X POST http://localhost:8000/api/core/tickets/1/notes -H "Authorization: B
 # 201 {"note_id":3,...}. Closed ticket: 409. Blank note: 422. Not your ticket: 404.
 ```
 
+Status history: every status the ticket has been in, oldest first, with who changed it. The first row is its creation (`from_status: null`), so a reopen shows up as `resolved` → `open`.
+
+```sh
+curl http://localhost:8000/api/core/tickets/1/history -H "Authorization: Bearer $TOKEN"
+# 200 [{"history_id":7,"from_status":null,"to_status":"open","changed_by_name":"Jane Doe","changed_by_role":"employee","reason":null,...}]
+# Not your ticket: 404.
+```
+
 Request escalation. It flags the ticket for Facility Admin review and returns the updated ticket.
 
 ```sh
@@ -316,5 +325,6 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
 - Only the employee side is built. Engineers and facility admins sign in to their own start pages (`/engineer`, `/admin`), which are placeholders for now: their endpoints (assigning, changing status, blocking, closing) don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set their `role_id` in the `users` table directly, to one of the rows in `roles` (`employee`, `engineer`, `admin`).
+- Status history is only written when a ticket is created, since nothing else changes status yet. The engineer and admin endpoints must call `ticket_repository.insert_status_change` in the same transaction as every status update, or the history will miss that step.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

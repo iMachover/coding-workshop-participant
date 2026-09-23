@@ -1279,6 +1279,88 @@
           ]
         },
         {
+          "name": "List status history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "description": "Every status the ticket has been in, oldest first. A new ticket has one row: its creation."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "pm.test('One row: the ticket was opened', () => {",
+                  "  pm.expect(rows).to.have.length(1);",
+                  "  pm.expect(rows[0].from_status).to.eql(null);",
+                  "  pm.expect(rows[0].to_status).to.eql('open');",
+                  "});",
+                  "pm.test('Changed by the creator', () => {",
+                  "  pm.expect(rows[0].changed_by_user_id).to.eql(Number(pm.collectionVariables.get('userId')));",
+                  "  pm.expect(rows[0].changed_by_role).to.eql('employee');",
+                  "});",
+                  "pm.test('No priority', () => pm.expect(pm.response.text()).not.to.include('priority'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List status history - another user's ticket (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "description": "Someone else's ticket is 404, like Get ticket.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Add note",
           "request": {
             "method": "POST",

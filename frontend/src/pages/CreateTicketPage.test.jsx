@@ -19,6 +19,7 @@ vi.mock('../services/ticketService', () => ({
   listMyTickets: vi.fn().mockResolvedValue([]),
   getMyTicket: vi.fn(),
   listNotes: vi.fn().mockResolvedValue([]),
+  listStatusHistory: vi.fn().mockResolvedValue([]),
 }))
 
 const BUILDINGS = [

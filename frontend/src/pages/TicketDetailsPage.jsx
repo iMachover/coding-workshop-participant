@@ -15,13 +15,14 @@ import { Link as RouterLink, useLocation, useParams } from 'react-router'
 
 import ErrorState from '../components/ErrorState'
 import EscalationPanel from '../components/tickets/EscalationPanel'
+import StatusHistory from '../components/tickets/StatusHistory'
 import StatusLabel from '../components/tickets/StatusLabel'
 import TicketFacts from '../components/tickets/TicketFacts'
 import TicketNotes from '../components/tickets/TicketNotes'
 import TicketWorkflow from '../components/tickets/TicketWorkflow'
 import UrgencyLabel from '../components/tickets/UrgencyLabel'
 import useApiData from '../hooks/useApiData'
-import { getMyTicket, listNotes } from '../services/ticketService'
+import { getMyTicket, listNotes, listStatusHistory } from '../services/ticketService'
 import { SCOPES } from '../utils/ticketFormat'
 
 function Panel({ title, children }) {
@@ -85,13 +86,14 @@ function CreatedNotice() {
 }
 
 /**
- * One of the employee's tickets: where it is in the workflow, its details, the
- * notes conversation, and escalation.
+ * One of the employee's tickets: where it is in the workflow, how it got there,
+ * its details, the notes conversation, and escalation.
  */
 function TicketDetailsPage() {
   const { ticketId } = useParams()
   const validId = /^[1-9]\d{0,9}$/.test(ticketId)
   const ticket = useApiData(getMyTicket, { ticketId }, { skip: !validId })
+  const history = useApiData(listStatusHistory, { ticketId }, { skip: !validId })
   const notes = useApiData(listNotes, { ticketId }, { skip: !validId })
 
   if (!validId || ticket.error?.status === 404) return <NotFound />
@@ -144,6 +146,10 @@ function TicketDetailsPage() {
 
       <Panel title="Progress">
         <TicketWorkflow status={t.status} blockedReason={t.blocked_reason} />
+      </Panel>
+
+      <Panel title="Status history">
+        <StatusHistory history={history} />
       </Panel>
 
       <Grid container spacing={3}>

@@ -11,7 +11,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Health](#health): `GET /health`, `GET /health/db`
 - [Auth](#auth): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
-- [Tickets](#tickets): list, create, get, notes (list/add), escalation
+- [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -26,7 +26,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets) with **35 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets) with **37 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -550,6 +550,46 @@ The server sets `status` (`open`), the creator (from the token) and the internal
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
 | 403 | Signed in as an engineer or admin | `{"detail":"You don't have access to this."}` |
 
+### List status history
+
+Every status the ticket has been in, **oldest first**, and who changed it. The first row is the ticket's creation (`from_status: null`). A reopened ticket shows it as its own step, e.g. `resolved` → `open`, with the reason if one was given.
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/tickets/:ticket_id/history` |
+| **Auth** | `Authorization: Bearer {{accessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.**
+
+```json
+[
+  {
+    "history_id": 7,
+    "ticket_id": 1,
+    "from_status": null,
+    "to_status": "open",
+    "changed_by_user_id": 1,
+    "changed_by_name": "Jane Doe",
+    "changed_by_role": "employee",
+    "reason": null,
+    "changed_at": "2026-09-22T20:35:34.471658-04:00"
+  }
+]
+```
+
+| Field | Notes |
+|---|---|
+| `from_status` | `null` only on the creation row; otherwise a [status](#enum-values) |
+| `to_status` | The status the ticket moved to |
+| `changed_by_*` | Who made the change: the employee at creation, an engineer or admin after that |
+| `reason` | Optional, e.g. why it was blocked or reopened |
+
+Nothing in the API changes status yet (engineer/admin endpoints come later), so a new ticket has exactly one row.
+
+**Errors:** same as [Get one of my tickets](#get-one-of-my-tickets) (404 / 422 / 401 / 403).
+
 ### List notes on a ticket
 
 | | |
@@ -693,6 +733,7 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 | 11 | `GET /tickets?view=active` | 200, includes the new ticket |
 | 12 | `GET /tickets?priority=P1` | 422 |
 | 13 | `GET /tickets/{{ticketId}}` with another user's token (register and log in a second user first) | 404 |
-| 14 | `POST /tickets/{{ticketId}}/notes` | 201 |
-| 15 | `POST /tickets/{{ticketId}}/escalation` | 200, `escalation_requested: true` |
-| 16 | Same escalation again | 409 |
+| 14 | `GET /tickets/{{ticketId}}/history` | 200, one row: `from_status: null`, `to_status: "open"` |
+| 15 | `POST /tickets/{{ticketId}}/notes` | 201 |
+| 16 | `POST /tickets/{{ticketId}}/escalation` | 200, `escalation_requested: true` |
+| 17 | Same escalation again | 409 |

@@ -32,6 +32,36 @@ test('a blocked ticket shows the engineer\'s reason next to Blocked', async ({ p
   await expect(current).toContainText('Blocked: Waiting for a replacement part')
 })
 
+test('a reopened ticket keeps every step in its status history', async ({ page, request }) => {
+  const owner = await registerViaApi(request, { name: 'Reopen Owner' })
+  const ticket = await createTicketViaApi(request, owner)
+  const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
+  const ticketId = Number(ticket.ticket_id)
+  const engineerId = Number(engineer.user_id)
+  // Stand-in for an engineer working the ticket: no API changes status yet.
+  sql(`UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'engineer')
+       WHERE user_id = ${engineerId}`)
+  sql(`INSERT INTO ticket_status_history (ticket_id, from_status, to_status, changed_by_user_id, reason) VALUES
+       (${ticketId}, 'open', 'in_progress', ${engineerId}, NULL),
+       (${ticketId}, 'in_progress', 'resolved', ${engineerId}, NULL),
+       (${ticketId}, 'resolved', 'open', ${engineerId}, 'Door stuck again this morning')`)
+  sql(`UPDATE tickets SET status = 'open' WHERE ticket_id = ${ticketId}`)
+
+  await signIn(page, owner.email)
+  await page.goto(`/tickets/${ticketId}`)
+
+  const rows = page.getByRole('list', { name: 'Status history' }).getByRole('listitem')
+  await expect(rows).toHaveCount(4)
+  await expect(rows.nth(0)).toContainText('Opened')
+  await expect(rows.nth(0)).toContainText('You · Employee')
+  await expect(rows.nth(1)).toContainText('In Progress')
+  await expect(rows.nth(2)).toContainText('Resolved')
+  await expect(rows.nth(3)).toContainText('Reopened → Open')
+  await expect(rows.nth(3)).toContainText('Sam Tech · Engineer')
+  await expect(rows.nth(3)).toContainText('Door stuck again this morning')
+  await expect(page.locator('[aria-current="step"]')).toContainText('Open (current status)')
+})
+
 test('forms explain problems before and after reaching the API', async ({ page, request }) => {
   await page.goto('/register')
   await page.getByLabel(/^Work email/).fill('someone@gmail.com')

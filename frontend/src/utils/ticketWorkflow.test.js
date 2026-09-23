@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAIN_PATH, workflowState } from './ticketWorkflow'
+import { describeStatusChange, MAIN_PATH, workflowState } from './ticketWorkflow'
 
 const states = (status) => workflowState(status).steps.map((s) => s.state)
 
@@ -30,5 +30,21 @@ describe('workflowState', () => {
     const { steps, blocked } = workflowState('resolved')
     expect(blocked).toBe(false)
     expect(steps.filter((s) => s.state === 'done').map((s) => s.status)).toEqual(['open', 'in_progress'])
+  })
+})
+
+describe('describeStatusChange', () => {
+  it.each([
+    [null, 'open', 'Opened', 'opened'],
+    ['open', 'in_progress', 'In Progress', 'moved'],
+    ['in_progress', 'resolved', 'Resolved', 'moved'],
+    ['resolved', 'closed', 'Closed', 'moved'],
+    ['in_progress', 'blocked', 'Blocked', 'blocked'],
+    ['blocked', 'in_progress', 'Unblocked → In Progress', 'unblocked'],
+    ['resolved', 'open', 'Reopened → Open', 'reopened'],
+    ['resolved', 'in_progress', 'Reopened → In Progress', 'reopened'],
+    ['closed', 'open', 'Reopened → Open', 'reopened'],
+  ])('%s -> %s reads "%s"', (from, to, label, kind) => {
+    expect(describeStatusChange({ from_status: from, to_status: to })).toEqual({ label, kind })
   })
 })

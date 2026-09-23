@@ -1,3 +1,5 @@
+import { STATUSES } from './ticketFormat'
+
 /**
  * The ticket workflow is not a straight line:
  *
@@ -11,6 +13,8 @@
  */
 
 export const MAIN_PATH = ['open', 'in_progress', 'resolved', 'closed']
+
+const FINISHED = ['resolved', 'closed']
 
 /** Where a Blocked ticket sits on the main path. */
 const BLOCKED_AT = 'in_progress'
@@ -35,4 +39,25 @@ export function workflowState(status) {
   })
 
   return { steps, blocked }
+}
+
+/**
+ * How one status-history row reads to an employee.
+ *   null -> open                    "Opened"
+ *   resolved/closed -> anything else "Reopened → <status>"   (work started again)
+ *   anything -> blocked              "Blocked"
+ *   blocked -> anything              "Unblocked → <status>"
+ *   otherwise                        the new status, e.g. "Resolved"
+ * @param {{from_status: string|null, to_status: string}} change
+ * @returns {{label: string, kind: 'opened'|'reopened'|'blocked'|'unblocked'|'moved'}}
+ */
+export function describeStatusChange({ from_status: from, to_status: to }) {
+  const target = STATUSES[to].label
+  if (from === null) return { label: 'Opened', kind: 'opened' }
+  if (FINISHED.includes(from) && !FINISHED.includes(to)) {
+    return { label: `Reopened → ${target}`, kind: 'reopened' }
+  }
+  if (to === 'blocked') return { label: 'Blocked', kind: 'blocked' }
+  if (from === 'blocked') return { label: `Unblocked → ${target}`, kind: 'unblocked' }
+  return { label: target, kind: 'moved' }
 }
