@@ -59,6 +59,13 @@ def list_notes(user_id: int, ticket_id: int) -> list[dict[str, Any]]:
         return ticket_repository.list_notes(conn, ticket_id)
 
 
+def list_status_history(user_id: int, ticket_id: int) -> list[dict[str, Any]]:
+    """Return every status one of the caller's tickets has been in, oldest first."""
+    with db.transaction() as conn:
+        _get_own_ticket(conn, user_id, ticket_id)
+        return ticket_repository.list_status_history(conn, ticket_id)
+
+
 def add_note(user_id: int, ticket_id: int, note_text: str) -> dict[str, Any]:
     """Add a note to one of the caller's open tickets and bump its updated_at."""
     with db.transaction() as conn:
@@ -99,10 +106,13 @@ def list_my_tickets(user_id: int, filters: TicketFilters) -> list[dict[str, Any]
 
 
 def create_ticket(user_id: int, data: TicketCreate) -> dict[str, Any]:
-    """Validate the location and create an open ticket owned by the caller."""
+    """Validate the location and create an open ticket owned by the caller.
+
+    The ticket's status history starts with its creation, in the same transaction.
+    """
     with db.transaction() as conn:
         _check_location(conn, data)
-        return ticket_repository.insert(
+        ticket = ticket_repository.insert(
             conn,
             title=data.title,
             short_description=data.short_description,
@@ -116,3 +126,11 @@ def create_ticket(user_id: int, data: TicketCreate) -> dict[str, Any]:
             seat_id=data.seat_id,
             created_by_user_id=user_id,
         )
+        ticket_repository.insert_status_change(
+            conn,
+            ticket["ticket_id"],
+            from_status=None,
+            to_status=ticket["status"],
+            changed_by_user_id=user_id,
+        )
+        return ticket

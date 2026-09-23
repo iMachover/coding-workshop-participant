@@ -210,6 +210,20 @@ class NoteResponse(BaseModel):
     created_at: datetime
 
 
+class StatusChangeResponse(BaseModel):
+    """One step in a ticket's status history. from_status is None on the creation row."""
+
+    history_id: int
+    ticket_id: int
+    from_status: TicketStatus | None
+    to_status: TicketStatus
+    changed_by_user_id: int
+    changed_by_name: str
+    changed_by_role: Role
+    reason: str | None
+    changed_at: datetime
+
+
 class EscalationRequest(BaseModel):
     """Why the employee thinks the ticket needs more attention."""
 

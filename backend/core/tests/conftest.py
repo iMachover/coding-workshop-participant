@@ -49,7 +49,9 @@ def _test_database() -> None:
 def _empty_tables() -> None:
     """Start every test with no users, tickets or notes."""
     with db.transaction() as conn:
-        conn.execute("TRUNCATE ticket_notes, tickets, users RESTART IDENTITY CASCADE")
+        conn.execute(
+            "TRUNCATE ticket_status_history, ticket_notes, tickets, users RESTART IDENTITY CASCADE"
+        )
 
 
 @pytest.fixture(autouse=True)

@@ -27,6 +27,7 @@ EMPLOYEE_ONLY = [
     ("GET", "/tickets", None),
     ("POST", "/tickets", {}),
     ("GET", "/tickets/{ticket_id}", None),
+    ("GET", "/tickets/{ticket_id}/history", None),
     ("GET", "/tickets/{ticket_id}/notes", None),
     ("POST", "/tickets/{ticket_id}/notes", {"note_text": "hello"}),
     ("POST", "/tickets/{ticket_id}/escalation", {"reason": "please"}),

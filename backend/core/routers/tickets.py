@@ -9,6 +9,7 @@ from schemas import (
     EscalationRequest,
     NoteCreate,
     NoteResponse,
+    StatusChangeResponse,
     TicketCreate,
     TicketDetail,
     TicketFilters,
@@ -38,6 +39,12 @@ def create_ticket(body: TicketCreate, user: EmployeeUser) -> dict[str, Any]:
 def get_my_ticket(ticket_id: IdPath, user: EmployeeUser) -> dict[str, Any]:
     """Full details of one of the caller's tickets. Others' tickets return 404."""
     return ticket_service.get_my_ticket(user["user_id"], ticket_id)
+
+
+@router.get("/{ticket_id}/history", response_model=list[StatusChangeResponse])
+def list_status_history(ticket_id: IdPath, user: EmployeeUser) -> list[dict[str, Any]]:
+    """Every status the ticket has been in and who changed it, oldest first."""
+    return ticket_service.list_status_history(user["user_id"], ticket_id)
 
 
 @router.get("/{ticket_id}/notes", response_model=list[NoteResponse])

@@ -11,6 +11,6 @@ BEGIN
         RAISE EXCEPTION 'reset.sql is local-dev only; refusing to run against %', server_addr;
     END IF;
 
-    DROP TABLE IF EXISTS ticket_notes, tickets, seats, floors, buildings, users CASCADE;
+    DROP TABLE IF EXISTS ticket_status_history, ticket_notes, tickets, seats, floors, buildings, users CASCADE;
 END
 $$;

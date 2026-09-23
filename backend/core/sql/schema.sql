@@ -77,3 +77,29 @@ CREATE TABLE IF NOT EXISTS ticket_notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ticket_notes_ticket ON ticket_notes (ticket_id);
+
+-- Append-only log of every status a ticket has been in, so a reopen
+-- (resolved -> open) stays visible after the status column moves on.
+CREATE TABLE IF NOT EXISTS ticket_status_history (
+    history_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ticket_id          INTEGER NOT NULL REFERENCES tickets (ticket_id) ON DELETE CASCADE,
+    from_status        TEXT CHECK (from_status IN (
+                           'open', 'in_progress', 'blocked', 'resolved', 'closed'
+                       )),  -- NULL on the row written when the ticket is created
+    to_status          TEXT NOT NULL CHECK (to_status IN (
+                           'open', 'in_progress', 'blocked', 'resolved', 'closed'
+                       )),
+    changed_by_user_id INTEGER NOT NULL REFERENCES users (user_id),
+    reason             TEXT,
+    changed_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (from_status IS DISTINCT FROM to_status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_status_history_ticket ON ticket_status_history (ticket_id);
+
+-- Tickets created before this table existed get their creation row, dated when the
+-- ticket was created. Their later changes weren't recorded, so their history starts here.
+INSERT INTO ticket_status_history (ticket_id, from_status, to_status, changed_by_user_id, changed_at)
+SELECT t.ticket_id, NULL, 'open', t.created_by_user_id, t.created_at
+FROM tickets t
+WHERE NOT EXISTS (SELECT 1 FROM ticket_status_history h WHERE h.ticket_id = t.ticket_id);

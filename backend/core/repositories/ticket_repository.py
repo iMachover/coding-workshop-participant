@@ -1,4 +1,4 @@
-"""SQL for the tickets and ticket_notes tables."""
+"""SQL for the tickets, ticket_notes and ticket_status_history tables."""
 
 from typing import Any
 
@@ -137,6 +137,42 @@ def insert_note(
         """,
         (ticket_id, user_id, note_text),
     ).fetchone()
+
+
+def list_status_history(conn: psycopg.Connection, ticket_id: int) -> list[dict[str, Any]]:
+    """Return every status a ticket has been in, with who changed it, oldest first."""
+    return conn.execute(
+        """
+        SELECT h.history_id, h.ticket_id, h.from_status, h.to_status,
+               h.changed_by_user_id, u.full_name AS changed_by_name,
+               u.role AS changed_by_role, h.reason, h.changed_at
+        FROM ticket_status_history h
+        JOIN users u ON u.user_id = h.changed_by_user_id
+        WHERE h.ticket_id = %s
+        ORDER BY h.changed_at, h.history_id
+        """,
+        (ticket_id,),
+    ).fetchall()
+
+
+def insert_status_change(
+    conn: psycopg.Connection,
+    ticket_id: int,
+    *,
+    from_status: str | None,
+    to_status: str,
+    changed_by_user_id: int,
+    reason: str | None = None,
+) -> None:
+    """Append one row to a ticket's status history. from_status is None only at creation."""
+    conn.execute(
+        """
+        INSERT INTO ticket_status_history
+            (ticket_id, from_status, to_status, changed_by_user_id, reason)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (ticket_id, from_status, to_status, changed_by_user_id, reason),
+    )
 
 
 def insert(
