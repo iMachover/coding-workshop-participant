@@ -9,10 +9,12 @@ from schemas import (
     AdminTicketDetail,
     AdminTicketFilters,
     AdminTicketListItem,
+    AssignmentRequest,
+    EngineerWorkload,
     NoteResponse,
     StatusChangeResponse,
 )
-from services import admin_ticket_service
+from services import admin_ticket_service, admin_user_service
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))]
@@ -41,3 +43,19 @@ def list_notes(ticket_id: IdPath) -> list[dict[str, Any]]:
 def list_status_history(ticket_id: IdPath) -> list[dict[str, Any]]:
     """Every status the ticket has been in and who changed it, oldest first."""
     return admin_ticket_service.list_status_history(ticket_id)
+
+
+@router.put("/tickets/{ticket_id}/assignment", response_model=AdminTicketDetail)
+def assign_ticket(ticket_id: IdPath, body: AssignmentRequest) -> dict[str, Any]:
+    """Assign or reassign the ticket to an engineer. Returns the updated ticket.
+
+    The first assignment also marks it acknowledged. Resolved or closed tickets, and the
+    engineer it already has, return 409; a user who isn't an engineer returns 400.
+    """
+    return admin_ticket_service.assign_ticket(ticket_id, body.engineer_id)
+
+
+@router.get("/engineers", response_model=list[EngineerWorkload])
+def list_engineers() -> list[dict[str, Any]]:
+    """Every engineer with their active tickets (open, in progress, blocked), lightest load first."""
+    return admin_user_service.list_engineers()

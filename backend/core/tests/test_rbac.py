@@ -34,10 +34,12 @@ EMPLOYEE_ONLY = [
 ]
 
 ADMIN_ONLY = [
-    ("GET", "/admin/tickets"),
-    ("GET", "/admin/tickets/{ticket_id}"),
-    ("GET", "/admin/tickets/{ticket_id}/notes"),
-    ("GET", "/admin/tickets/{ticket_id}/history"),
+    ("GET", "/admin/tickets", None),
+    ("GET", "/admin/tickets/{ticket_id}", None),
+    ("GET", "/admin/tickets/{ticket_id}/notes", None),
+    ("GET", "/admin/tickets/{ticket_id}/history", None),
+    ("PUT", "/admin/tickets/{ticket_id}/assignment", {"engineer_id": 1}),
+    ("GET", "/admin/engineers", None),
 ]
 
 
@@ -50,7 +52,7 @@ def _url(path: str, ticket_id: int = 1) -> str:
 def test_the_public_list_matches_real_routes() -> None:
     assert PUBLIC <= set(ALL_ROUTES)
     assert {(m, p) for m, p, _ in EMPLOYEE_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/tickets")}
-    assert set(ADMIN_ONLY) == {r for r in ALL_ROUTES if r[1].startswith("/admin")}
+    assert {(m, p) for m, p, _ in ADMIN_ONLY} == {r for r in ALL_ROUTES if r[1].startswith("/admin")}
 
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
@@ -75,13 +77,13 @@ def test_ticket_routes_are_employee_only(
 
 
 @pytest.mark.parametrize("role", ["employee", "engineer"])
-@pytest.mark.parametrize(("method", "path"), ADMIN_ONLY)
+@pytest.mark.parametrize(("method", "path", "body"), ADMIN_ONLY)
 def test_admin_routes_are_admin_only(
-    client, user_with_role, create_ticket, jane, role, method, path
+    client, user_with_role, create_ticket, jane, role, method, path, body
 ) -> None:
     ticket = create_ticket(jane)
     response = client.request(
-        method, _url(path, ticket["ticket_id"]), headers=bearer(user_with_role(role))
+        method, _url(path, ticket["ticket_id"]), json=body, headers=bearer(user_with_role(role))
     )
     assert response.status_code == 403
     assert response.json() == {"detail": ACCESS_DENIED}

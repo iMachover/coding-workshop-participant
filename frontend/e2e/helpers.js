@@ -1,6 +1,20 @@
 import { expect } from '@playwright/test'
 
+import { sql } from './db.js'
+
 export const PASSWORD = 'e2e-password-123'
+
+/**
+ * Give a user a role directly in the e2e database. Stand-in for an admin promoting
+ * them: no API can change roles yet.
+ * @param {number} userId
+ * @param {'employee'|'engineer'|'admin'} role
+ */
+export function setRole(userId, role) {
+  if (!['employee', 'engineer', 'admin'].includes(role)) throw new Error(`Unknown role "${role}"`)
+  sql(`UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = '${role}')
+       WHERE user_id = ${Number(userId)}`)
+}
 
 /** A unique @acme.inc email, so tests never collide within a run. */
 export function uniqueEmail(name) {
@@ -45,13 +59,16 @@ export async function createTicketViaApi(request, user, overrides = {}) {
   return response.json()
 }
 
-/** Sign in through the real form and wait for the dashboard. */
-export async function signIn(page, email, password = PASSWORD) {
+/**
+ * Sign in through the real form and wait for the role's start page.
+ * @param {{password?: string, home?: string}} [options] home: the start page's h1
+ */
+export async function signIn(page, email, { password = PASSWORD, home = 'My dashboard' } = {}) {
   await page.goto('/login')
   await page.getByLabel(/^Work email/).fill(email)
   await page.getByLabel(/^Password/).fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'My dashboard' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: home })).toBeVisible()
 }
 
 /** Pick an option from an MUI select by its label. */

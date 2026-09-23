@@ -212,3 +212,22 @@ def create_ticket(
         return response.json()
 
     return _create
+
+
+@pytest.fixture
+def admin(user_with_role: Callable[[str], dict[str, Any]]) -> Headers:
+    """Headers for a Facility Admin."""
+    return bearer(user_with_role("admin"))
+
+
+@pytest.fixture
+def engineers(
+    register: Callable[..., dict[str, Any]], set_role: Callable[[int, str], None]
+) -> dict[str, int]:
+    """Two engineers' user ids by first name: 'sam' (Sam Tech) and 'kim' (Kim Fixit)."""
+    ids = {}
+    for email, name in (("sam@acme.inc", "Sam Tech"), ("kim@acme.inc", "Kim Fixit")):
+        user = register(email, name)
+        set_role(user["user_id"], "engineer")
+        ids[name.split()[0].lower()] = user["user_id"]
+    return ids

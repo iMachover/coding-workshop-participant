@@ -1,4 +1,4 @@
-"""SQL for the users table. Every query returns the role by name, joined from roles."""
+"""SQL for the users table. User lookups return the role by name, joined from roles."""
 
 from typing import Any
 
@@ -42,6 +42,32 @@ def get_by_id(conn: psycopg.Connection, user_id: int) -> dict[str, Any] | None:
         """,
         (user_id,),
     ).fetchone()
+
+
+def list_engineers_with_workload(conn: psycopg.Connection) -> list[dict[str, Any]]:
+    """Return every engineer with counts of their active tickets, lightest load first.
+
+    Active means open, in progress or blocked. Engineers with no tickets are included (all
+    counts 0). Ties go to whoever has fewer P1s, then by name.
+    """
+    return conn.execute(
+        """
+        SELECT u.user_id, u.full_name, u.email,
+               count(t.ticket_id) AS active_count,
+               count(t.ticket_id) FILTER (WHERE t.status = 'open') AS open_count,
+               count(t.ticket_id) FILTER (WHERE t.status = 'in_progress') AS in_progress_count,
+               count(t.ticket_id) FILTER (WHERE t.status = 'blocked') AS blocked_count,
+               count(t.ticket_id) FILTER (WHERE t.priority = 'P1') AS p1_count
+        FROM users u
+        JOIN roles r ON r.role_id = u.role_id
+        LEFT JOIN tickets t
+          ON t.assigned_to_user_id = u.user_id
+         AND t.status IN ('open', 'in_progress', 'blocked')
+        WHERE r.role_name = 'engineer'
+        GROUP BY u.user_id
+        ORDER BY active_count, p1_count, u.full_name, u.user_id
+        """
+    ).fetchall()
 
 
 def get_with_password_hash_by_email(

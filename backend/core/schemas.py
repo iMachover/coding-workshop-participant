@@ -283,3 +283,22 @@ class AdminTicketDetail(TicketDetail):
     created_by_name: str
     created_by_email: str
     created_by_phone: str | None
+
+
+class AssignmentRequest(BaseModel):
+    """Which engineer should own the ticket. Must be a user whose role is 'engineer'."""
+
+    engineer_id: DbId
+
+
+class EngineerWorkload(BaseModel):
+    """An engineer and their active tickets (open, in progress or blocked), for choosing who to assign."""
+
+    user_id: int
+    full_name: str
+    email: str
+    active_count: int
+    open_count: int
+    in_progress_count: int
+    blocked_count: int
+    p1_count: int

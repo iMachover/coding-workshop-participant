@@ -2,25 +2,6 @@
 
 import pytest
 
-from tests.conftest import bearer
-
-
-@pytest.fixture
-def admin(user_with_role) -> dict[str, str]:
-    """Headers for a Facility Admin."""
-    return bearer(user_with_role("admin"))
-
-
-@pytest.fixture
-def engineers(register, set_role) -> dict[str, int]:
-    """Two engineers' user ids by first name."""
-    ids = {}
-    for email, name in (("sam@acme.inc", "Sam Tech"), ("kim@acme.inc", "Kim Fixit")):
-        user = register(email, name)
-        set_role(user["user_id"], "engineer")
-        ids[name.split()[0].lower()] = user["user_id"]
-    return ids
-
 
 @pytest.fixture
 def triage(client, api, create_ticket, jane, eve, loc, engineers, run_sql) -> dict[str, int]:

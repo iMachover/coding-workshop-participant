@@ -186,6 +186,25 @@ def touch(conn: psycopg.Connection, ticket_id: int) -> None:
     conn.execute("UPDATE tickets SET updated_at = now() WHERE ticket_id = %s", (ticket_id,))
 
 
+def assign(conn: psycopg.Connection, ticket_id: int, engineer_id: int) -> None:
+    """Give a ticket to an engineer. The first assignment also marks it acknowledged.
+
+    assigned_at always moves to now, so it records the current engineer's start.
+    acknowledged_at keeps its first value across reassignments. Status is left alone.
+    """
+    conn.execute(
+        """
+        UPDATE tickets
+        SET assigned_to_user_id = %s,
+            assigned_at = now(),
+            acknowledged_at = COALESCE(acknowledged_at, now()),
+            updated_at = now()
+        WHERE ticket_id = %s
+        """,
+        (engineer_id, ticket_id),
+    )
+
+
 def request_escalation(conn: psycopg.Connection, ticket_id: int, reason: str) -> None:
     """Flag a ticket for admin review with the employee's reason."""
     conn.execute(

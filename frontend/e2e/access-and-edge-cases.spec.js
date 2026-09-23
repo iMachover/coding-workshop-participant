@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { sql } from './db.js'
-import { createTicketViaApi, PASSWORD, registerViaApi, signIn, uniqueEmail } from './helpers.js'
+import { createTicketViaApi, PASSWORD, registerViaApi, setRole, signIn, uniqueEmail } from './helpers.js'
 
 test('an employee cannot open another employee\'s ticket', async ({ page, request }) => {
   const owner = await registerViaApi(request, { name: 'Ticket Owner' })
@@ -39,8 +39,7 @@ test('a reopened ticket keeps every step in its status history', async ({ page, 
   const ticketId = Number(ticket.ticket_id)
   const engineerId = Number(engineer.user_id)
   // Stand-in for an engineer working the ticket: no API changes status yet.
-  sql(`UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'engineer')
-       WHERE user_id = ${engineerId}`)
+  setRole(engineerId, 'engineer')
   sql(`INSERT INTO ticket_status_history (ticket_id, from_status, to_status, changed_by_user_id, reason) VALUES
        (${ticketId}, 'open', 'in_progress', ${engineerId}, NULL),
        (${ticketId}, 'in_progress', 'resolved', ${engineerId}, NULL),
@@ -92,9 +91,7 @@ test('a forged or stale token is signed out with an explanation', async ({ page 
 
 test('an engineer lands on their own workspace and never calls the employee API', async ({ page, request }) => {
   const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
-  // Stand-in for an admin promoting them: no API can change roles yet.
-  sql(`UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'engineer')
-       WHERE user_id = ${Number(engineer.user_id)}`)
+  setRole(engineer.user_id, 'engineer')
   const ticketCalls = []
   page.on('response', (response) => {
     if (response.url().includes('/api/core/tickets')) ticketCalls.push(response.status())
