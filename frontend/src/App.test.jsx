@@ -1,23 +1,30 @@
-import { screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import { renderWithProviders } from './test/renderWithProviders'
+import { SESSION_ENDED } from './auth/AuthContext'
+import { api } from './services/apiClient'
+import { getStoredUser } from './services/session'
+import { JANE, renderWithProviders } from './test/renderWithProviders'
 
-describe('routing', () => {
-  it('sends the start page to sign in', () => {
-    renderWithProviders(<App />, { route: '/' })
-    expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+const heading = () => screen.getByRole('heading', { level: 1 })
+
+describe('routing for guests', () => {
+  it.each([
+    ['/', 'Sign in'],
+    ['/login', 'Sign in'],
+    ['/register', 'Create your account'],
+    ['/no-such-page', 'Page not found'],
+  ])('%s shows "%s"', (route, name) => {
+    renderWithProviders(<App />, { route })
+    expect(heading()).toHaveTextContent(name)
   })
 
-  it.each([
-    ['/register', 'Create your account'],
-    ['/login', 'Sign in'],
-    ['/dashboard', 'My dashboard'],
-    ['/no-such-page', 'Page not found'],
-  ])('%s shows "%s"', (route, heading) => {
-    renderWithProviders(<App />, { route })
-    expect(screen.getByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+  it('sends /dashboard to sign in, with a reason', () => {
+    renderWithProviders(<App />, { route: '/dashboard' })
+    expect(heading()).toHaveTextContent('Sign in')
+    expect(screen.getByRole('alert')).toHaveTextContent('Please sign in to continue.')
   })
 
   it('offers a way back from an unknown page', () => {
@@ -26,15 +33,56 @@ describe('routing', () => {
   })
 })
 
+describe('routing when signed in', () => {
+  it.each(['/', '/dashboard', '/login', '/register'])('%s shows the dashboard', (route) => {
+    renderWithProviders(<App />, { route, user: JANE })
+    expect(heading()).toHaveTextContent('My dashboard')
+  })
+})
+
 describe('header', () => {
-  it('shows the full name on desktop', () => {
-    renderWithProviders(<App />, { route: '/login', width: 1280 })
+  it('shows only the app name to guests', () => {
+    renderWithProviders(<App />, { route: '/login' })
     expect(screen.getByRole('link', { name: 'Facilities Helpdesk' })).toHaveAttribute('href', '/')
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
   })
 
-  it('shortens the name on phones', () => {
-    renderWithProviders(<App />, { route: '/login', width: 375 })
+  it('shows the user and a sign-out button on desktop', () => {
+    renderWithProviders(<App />, { route: '/dashboard', user: JANE, width: 1280 })
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveTextContent('Sign out')
+  })
+
+  it('uses a short name and an icon-only sign-out on phones', () => {
+    renderWithProviders(<App />, { route: '/dashboard', user: JANE, width: 375 })
     expect(screen.getByRole('link', { name: 'Helpdesk' })).toBeInTheDocument()
-    expect(screen.queryByText('Facilities Helpdesk')).not.toBeInTheDocument()
+    expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveTextContent('')
+  })
+
+  it('signs out, forgets the session and says so', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<App />, { route: '/dashboard', user: JANE })
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(heading()).toHaveTextContent('Sign in')
+    expect(screen.getByRole('alert')).toHaveTextContent("You've signed out.")
+    expect(getStoredUser()).toBeNull()
+    expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument()
+  })
+
+  it('sends the user to sign in when the API rejects their session', async () => {
+    renderWithProviders(<App />, { route: '/dashboard', user: JANE })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ detail: 'Unknown user' }),
+    }))
+
+    await act(() => api.get('/tickets').catch(() => {}))
+
+    expect(heading()).toHaveTextContent('Sign in')
+    expect(screen.getByRole('alert')).toHaveTextContent(SESSION_ENDED)
   })
 })

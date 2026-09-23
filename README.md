@@ -61,6 +61,7 @@ Frontend code lives in `frontend/src/`:
 | `pages/` | One component per route |
 | `components/` | Shared UI (app header, layout) |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
+| `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the session. **Dev-only session** (see Known limitations). |
 | `hooks/` | Shared hooks, e.g. `useIsMobile` (react-responsive) |
 | `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 

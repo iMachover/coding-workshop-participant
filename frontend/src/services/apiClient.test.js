@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { api, ApiError, toApiError } from './apiClient'
+import { api, ApiError, onUnauthorized, toApiError } from './apiClient'
 import { storeUser } from './session'
 
 function mockFetch(status, body) {
@@ -120,6 +120,39 @@ describe('errors', () => {
 
     expect(error.status).toBe(0)
     expect(error.message).toBe("Can't reach the server. Check your connection and try again.")
+  })
+
+  it('reports a rejected session, but not a 401 without one', async () => {
+    const handler = vi.fn()
+    const stop = onUnauthorized(handler)
+    mockFetch(401, { detail: 'Invalid email or password' })
+
+    await api.post('/auth/login', {}).catch(() => {})
+    expect(handler).not.toHaveBeenCalled()
+
+    storeUser({ user_id: 99 })
+    await api.get('/auth/me').catch(() => {})
+    expect(handler).toHaveBeenCalledTimes(1)
+
+    stop()
+    await api.get('/auth/me').catch(() => {})
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a newer handler when an older one unregisters', async () => {
+    const older = vi.fn()
+    const newer = vi.fn()
+    const stopOlder = onUnauthorized(older)
+    const stopNewer = onUnauthorized(newer)
+    stopOlder()
+    storeUser({ user_id: 99 })
+    mockFetch(401, {})
+
+    await api.get('/auth/me').catch(() => {})
+
+    expect(newer).toHaveBeenCalledTimes(1)
+    expect(older).not.toHaveBeenCalled()
+    stopNewer()
   })
 
   it('lets cancelled requests reject as AbortError', async () => {

@@ -67,6 +67,21 @@ function buildUrl(path, params) {
   return `${API_BASE}${path}${qs ? `?${qs}` : ''}`
 }
 
+let unauthorizedHandler = null
+
+/**
+ * Register what to do when the API rejects the current session (401 on a request
+ * that sent one), e.g. the user no longer exists or, later, the JWT expired.
+ * @param {() => void} handler
+ * @returns {() => void} call to unregister
+ */
+export function onUnauthorized(handler) {
+  unauthorizedHandler = handler
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null
+  }
+}
+
 /**
  * Call the core API. Resolves with the parsed JSON body; rejects with ApiError.
  * @param {string} path e.g. "/tickets"
@@ -94,7 +109,11 @@ export async function apiRequest(path, { method = 'GET', body, params, signal } 
 
   if (response.status === 204) return null
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw toApiError(response.status, data)
+  if (!response.ok) {
+    // A 401 without a session (e.g. a wrong password at login) is not a session problem.
+    if (response.status === 401 && user) unauthorizedHandler?.()
+    throw toApiError(response.status, data)
+  }
   return data
 }
 
