@@ -1,4 +1,7 @@
-"""Ticket rules: initial priority, location hierarchy and ownership."""
+"""Ticket rules: initial priority, location hierarchy and ownership.
+
+Priority is stored for engineer/admin triage; employee responses never include it.
+"""
 
 from typing import Any
 
@@ -90,7 +93,6 @@ def list_my_tickets(user_id: int, filters: TicketFilters) -> list[dict[str, Any]
             user_id,
             status=filters.status,
             urgency=filters.urgency,
-            priority=filters.priority,
             closed=closed,
             search=filters.q or None,
         )

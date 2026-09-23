@@ -62,8 +62,9 @@ Frontend code lives in `frontend/src/`:
 | `components/` | Shared UI: app header and layout, route guards, `ErrorState`; `dashboard/` and `tickets/` hold feature pieces |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the session. **Dev-only session** (see Known limitations). |
-| `hooks/` | `useIsMobile` (react-responsive), `useMyTickets` (loads tickets, cancels outdated requests), `useDebouncedValue` (search waits 300 ms after typing) |
-| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts |
+| `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
+| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, and the workflow (Blocked is a side state off In Progress, not a step) |
+| `frontend/e2e/` (outside `src/`) | Playwright end-to-end tests (see Testing) |
 | `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 
 ## Testing
@@ -110,9 +111,31 @@ npm run lint
 
 Tests sit next to the code they cover (`apiClient.test.js` beside `apiClient.js`). `src/test/renderWithProviders.jsx` renders a component with the theme and router at a given URL and screen width, e.g. `{ width: 375 }` for a phone.
 
+### End-to-end tests
+
+Playwright drives a real Chrome through the app, against a real backend and Postgres. It starts its own backend (port 8100) and frontend (port 3100), so servers you already have running are left alone. It uses its own database, `codingworkshop_e2e`, which is rebuilt from `backend/core/sql/` before every run. Create it once:
+
+```sh
+psql -d postgres -c "CREATE DATABASE codingworkshop_e2e OWNER test;"
+```
+
+Then:
+
+```sh
+cd frontend
+npm run e2e
+```
+
+It needs Google Chrome installed. To use Playwright's own Chromium instead, run `npx playwright install chromium` and set `E2E_BROWSER_CHANNEL=chromium`. On failure, a trace and an HTML report are saved: run `npx playwright show-report`.
+
+| Spec | Covers |
+|---|---|
+| `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
+| `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, and the phone layout |
+
 ### Manual checks with curl
 
-With the backend running, run these in another terminal.
+For every route with its headers, request body, example response and errors, and a Postman setup, see [postman_testing.md](postman_testing.md). The quick curl versions follow. With the backend running, run these in another terminal.
 
 Health check:
 
@@ -165,7 +188,7 @@ curl http://localhost:8000/api/core/floors/3/seats -H 'X-User-Id: 1'
 # Unknown building or floor: 404. Non-numeric id: 422.
 ```
 
-Create a ticket. The server sets `status` to `open`, the creator from `X-User-Id`, and `priority` from `affected_scope` (building → P1, floor → P2, me → P3).
+Create a ticket. The server sets `status` to `open` and the creator from `X-User-Id`. It also stores an internal `priority` from `affected_scope` (building → P1, floor → P2, me → P3) for engineers and admins; employee responses never include it.
 
 ```sh
 curl -X POST http://localhost:8000/api/core/tickets -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
@@ -173,7 +196,7 @@ curl -X POST http://localhost:8000/api/core/tickets -H 'X-User-Id: 1' -H 'Conten
        "description":"Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
        "category":"network","urgency":"medium","affected_scope":"me",
        "building_id":1,"floor_id":3,"seat_id":3}'
-# 201 {"ticket_id":1,...,"priority":"P3","status":"open",...}
+# 201 {"ticket_id":1,...,"urgency":"medium","affected_scope":"me","status":"open",...}
 ```
 
 | Problem | Status |
@@ -195,10 +218,9 @@ curl 'http://localhost:8000/api/core/tickets?q=printer' -H 'X-User-Id: 1'
 | `view` | `active` (everything not closed) or `closed` |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
 | `urgency` | `low`, `medium`, `high` |
-| `priority` | `P1`, `P2`, `P3` |
 | `q` | Case-insensitive text in title or short description, or an exact ticket id |
 
-Filters combine with AND. An unknown value returns 422.
+Filters combine with AND. An unknown value, or an unknown parameter such as `priority`, returns 422.
 
 Ticket details: the full ticket plus `building_name`, `floor_number`, `seat_number` and `assigned_to_name`.
 
@@ -263,4 +285,6 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Sign-in is temporary and dev-only. It is not real authentication.** Login returns the user, the frontend keeps it in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)), and every request sends its id as the `X-User-Id` header. Anyone can send any id. JWT will replace this: only `session.js`, `apiClient.js` and the backend's `deps.get_current_user` need to change.
 - List endpoints return every matching record, with no pagination yet.
-- Employees never see a ticket's internal **priority** in the UI; they see the urgency and impact they chose, and the status. The API responses still include `priority`, so it is visible in browser dev tools. Removing it from employee responses is a backend change for when role-based responses are added.
+- Only the employee side exists. Engineer and facility-admin screens and endpoints (assigning, changing status, blocking, closing) are not built yet; tests stand in for them with SQL.
+- Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.
+- Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

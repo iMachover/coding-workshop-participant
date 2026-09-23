@@ -1,4 +1,4 @@
-/** Ticket list items shaped like GET /api/core/tickets responses. */
+/** Ticket list items shaped like GET /api/core/tickets responses (which never include priority). */
 
 export function makeTicket(overrides = {}) {
   return {
@@ -8,7 +8,6 @@ export function makeTicket(overrides = {}) {
     category: 'network',
     status: 'open',
     urgency: 'medium',
-    priority: 'P3',
     affected_scope: 'me',
     escalation_requested: false,
     building_id: 1,
@@ -32,19 +31,17 @@ export const TICKETS = [
     category: 'printer',
     status: 'in_progress',
     urgency: 'high',
-    priority: 'P2',
     affected_scope: 'floor',
     floor_number: 2,
     seat_id: null,
     seat_number: null,
     updated_at: '2026-09-22T12:00:00-04:00',
   }),
-  makeTicket({ ticket_id: 2, title: 'Old lamp', status: 'closed', priority: 'P3', updated_at: '2026-09-22T11:30:00-04:00' }),
+  makeTicket({ ticket_id: 2, title: 'Old lamp', status: 'closed', updated_at: '2026-09-22T11:30:00-04:00' }),
   makeTicket({
     ticket_id: 4,
     title: 'Lobby doors',
     status: 'blocked',
-    priority: 'P1',
     affected_scope: 'building',
     building_name: 'Building B',
     floor_number: null,

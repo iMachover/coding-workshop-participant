@@ -14,16 +14,20 @@ import pytest
         ("building", {"floor_id": None, "seat_id": None}, "P1"),
     ],
 )
-def test_create_sets_priority_from_scope(create_ticket, jane, scope, location, priority) -> None:
+def test_create_stores_priority_from_scope_but_does_not_return_it(
+    create_ticket, jane, run_sql, scope, location, priority
+) -> None:
     ticket = create_ticket(jane, affected_scope=scope, **location)
-    assert ticket["priority"] == priority
+    stored = run_sql("SELECT priority FROM tickets WHERE ticket_id = %s", (ticket["ticket_id"],))
+    assert stored[0]["priority"] == priority
+    assert "priority" not in ticket
     assert ticket["status"] == "open"
     assert ticket["created_by_user_id"] == int(jane["X-User-Id"])
     assert ticket["escalation_requested"] is False
     assert ticket["assigned_to_user_id"] is None
 
 
-def test_create_ignores_server_owned_fields(create_ticket, jane, eve) -> None:
+def test_create_ignores_server_owned_fields(create_ticket, jane, eve, run_sql) -> None:
     ticket = create_ticket(
         jane,
         affected_scope="building",
@@ -33,7 +37,8 @@ def test_create_ignores_server_owned_fields(create_ticket, jane, eve) -> None:
         priority="P3",
         created_by_user_id=int(eve["X-User-Id"]),
     )
-    assert (ticket["status"], ticket["priority"]) == ("open", "P1")
+    stored = run_sql("SELECT priority FROM tickets WHERE ticket_id = %s", (ticket["ticket_id"],))
+    assert (ticket["status"], stored[0]["priority"]) == ("open", "P1")
     assert ticket["created_by_user_id"] == int(jane["X-User-Id"])
 
 
@@ -131,7 +136,6 @@ def mixed_tickets(create_ticket, jane, run_sql) -> dict[str, int]:
         ({"view": "closed"}, {"lamp"}),
         ({"status": "open"}, {"wifi", "printer"}),
         ({"urgency": "high"}, {"printer"}),
-        ({"priority": "P1"}, {"lamp"}),
         ({"q": "WI-FI"}, {"wifi"}),
         ({"q": "tray"}, {"printer"}),
         ({"q": "%"}, {"printer"}),
@@ -148,6 +152,25 @@ def test_list_filters(client, api, jane, mixed_tickets, params, expected) -> Non
 
 def test_list_search_matches_ticket_id(client, api, jane, mixed_tickets) -> None:
     assert _ids(client, api, jane, q=str(mixed_tickets["printer"])) == [mixed_tickets["printer"]]
+
+
+@pytest.mark.parametrize("params", [{"priority": "P1"}, {"priority": ""}, {"unknown": "x"}])
+def test_list_has_no_priority_filter(client, api, jane, params) -> None:
+    response = client.get(f"{api}/tickets", headers=jane, params=params)
+    assert response.status_code == 422
+
+
+def test_employee_responses_never_include_priority(client, api, jane, create_ticket) -> None:
+    created = create_ticket(jane)
+    ticket_id = created["ticket_id"]
+    listed = client.get(f"{api}/tickets", headers=jane).json()
+    detail = client.get(f"{api}/tickets/{ticket_id}", headers=jane).json()
+    escalated = client.post(
+        f"{api}/tickets/{ticket_id}/escalation", json={"reason": "Urgent"}, headers=jane
+    ).json()
+
+    for body in (created, listed[0], detail, escalated):
+        assert "priority" not in body
 
 
 @pytest.mark.parametrize("params", [{"status": "bogus"}, {"view": "all"}, {"q": "x" * 101}])

@@ -4,9 +4,10 @@ import re
 from datetime import datetime
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-# These mirror the CHECK constraints in sql/schema.sql.
+# These mirror the CHECK constraints in sql/schema.sql. Ticket priority (P1-P3) is stored
+# for engineer/admin triage but is deliberately not part of any employee model.
 Role = Literal["employee", "engineer", "admin"]
 Category = Literal[
     "network", "hardware", "printer", "hvac",
@@ -14,7 +15,6 @@ Category = Literal[
 ]
 Urgency = Literal["low", "medium", "high"]
 AffectedScope = Literal["me", "floor", "building"]
-Priority = Literal["P1", "P2", "P3"]
 TicketStatus = Literal["open", "in_progress", "blocked", "resolved", "closed"]
 
 # Postgres INTEGER max. Ids above this are rejected up front instead of erroring in the DB.
@@ -97,7 +97,7 @@ class SeatResponse(BaseModel):
 
 
 class TicketCreate(BaseModel):
-    """A new ticket from an employee. Status, priority and creator are set by the server."""
+    """A new ticket from an employee. Status, creator and the internal priority are set by the server."""
 
     title: Annotated[TrimmedText, StringConstraints(max_length=150)]
     short_description: Annotated[TrimmedText, StringConstraints(max_length=280)]
@@ -122,18 +122,22 @@ class TicketCreate(BaseModel):
 
 
 class TicketFilters(BaseModel):
-    """Query parameters for the my-tickets list. All optional; they combine with AND."""
+    """Query parameters for the my-tickets list. All optional; they combine with AND.
+
+    Unknown parameters (including priority, which employees can't filter by) are a 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     status: TicketStatus | None = None
     urgency: Urgency | None = None
-    priority: Priority | None = None
     # "active" is everything not closed, so resolved tickets awaiting closure still show.
     view: Literal["active", "closed"] | None = None
     q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
 
 
 class TicketListItem(BaseModel):
-    """A ticket summary for list views, with location names filled in."""
+    """A ticket summary for the employee's list, with location names filled in."""
 
     ticket_id: int
     title: str
@@ -141,7 +145,6 @@ class TicketListItem(BaseModel):
     category: Category
     status: TicketStatus
     urgency: Urgency
-    priority: Priority
     affected_scope: AffectedScope
     escalation_requested: bool
     building_id: int
@@ -155,7 +158,7 @@ class TicketListItem(BaseModel):
 
 
 class TicketResponse(BaseModel):
-    """A ticket row as stored."""
+    """A ticket as its employee sees it: everything stored except the internal priority."""
 
     ticket_id: int
     title: str
@@ -164,7 +167,6 @@ class TicketResponse(BaseModel):
     category: Category
     urgency: Urgency
     affected_scope: AffectedScope
-    priority: Priority
     status: TicketStatus
     building_id: int
     floor_id: int | None

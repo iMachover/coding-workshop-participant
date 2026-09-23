@@ -1,0 +1,80 @@
+import { expect, test } from '@playwright/test'
+
+import { sql } from './db.js'
+import { createTicketViaApi, registerViaApi, signIn, uniqueEmail } from './helpers.js'
+
+test('an employee cannot open another employee\'s ticket', async ({ page, request }) => {
+  const owner = await registerViaApi(request, { name: 'Ticket Owner' })
+  const ticket = await createTicketViaApi(request, owner)
+  const other = await registerViaApi(request, { name: 'Someone Else' })
+
+  await signIn(page, other.email)
+  await page.goto(`/tickets/${ticket.ticket_id}`)
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Ticket not found' })).toBeVisible()
+  await expect(page.getByText(ticket.title)).toHaveCount(0)
+})
+
+test('a blocked ticket shows the engineer\'s reason next to Blocked', async ({ page, request }) => {
+  const owner = await registerViaApi(request, { name: 'Blocked Owner' })
+  const ticket = await createTicketViaApi(request, owner)
+  // Stand-in for an engineer: the employee API can't block tickets.
+  sql(
+    `UPDATE tickets SET status = 'blocked', blocked_reason = 'Waiting for a replacement part'
+     WHERE ticket_id = ${Number(ticket.ticket_id)}`,
+  )
+
+  await signIn(page, owner.email)
+  await page.goto(`/tickets/${ticket.ticket_id}`)
+
+  const current = page.locator('[aria-current="step"]')
+  await expect(current).toContainText('In Progress (paused while blocked)')
+  await expect(current).toContainText('Blocked: Waiting for a replacement part')
+})
+
+test('forms explain problems before and after reaching the API', async ({ page, request }) => {
+  await page.goto('/register')
+  await page.getByLabel(/^Work email/).fill('someone@gmail.com')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await expect(page.getByText('Use your @acme.inc email address.')).toBeVisible()
+
+  const existing = await registerViaApi(request, { name: 'Already Here' })
+  await page.goto('/login')
+  await page.getByLabel(/^Work email/).fill(existing.email)
+  await page.getByLabel(/^Password/).fill('not-the-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Invalid email or password')
+})
+
+test('a stale session is signed out with an explanation', async ({ page }) => {
+  await page.goto('/login')
+  await page.evaluate(() =>
+    localStorage.setItem('helpdesk.devSession', JSON.stringify({ user_id: 987654, full_name: 'Ghost' })),
+  )
+
+  await page.goto('/dashboard')
+
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByRole('alert')).toHaveText('Your session has ended. Please sign in again.')
+})
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })
+
+  test('the dashboard and ticket details fit the screen', async ({ page, request }) => {
+    const owner = await registerViaApi(request, { name: 'Phone User', email: uniqueEmail('phone') })
+    const ticket = await createTicketViaApi(request, owner)
+
+    await signIn(page, owner.email)
+    await expect(page.getByRole('link', { name: 'Helpdesk' })).toBeVisible()
+    await expect(page.getByRole('table')).toHaveCount(0)
+    // On phones the list is cards; each card is one link to the ticket.
+    const card = page.getByRole('region', { name: 'My tickets' }).getByRole('link', { name: new RegExp(`^#${ticket.ticket_id} `) })
+    await expect(card).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+
+    await card.click()
+    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toHaveCSS('flex-direction', 'column')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+  })
+})

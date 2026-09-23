@@ -30,7 +30,6 @@ const TICKET = makeTicket({
   category: 'printer',
   status: 'in_progress',
   urgency: 'high',
-  priority: 'P2',
   affected_scope: 'floor',
   floor_number: 2,
   seat_number: null,

@@ -24,13 +24,13 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 def list_my_tickets(
     user: CurrentUser, filters: Annotated[TicketFilters, Query()]
 ) -> list[dict[str, Any]]:
-    """List the caller's tickets. Filter by status, urgency, priority, view and search text."""
+    """List the caller's tickets. Filter by status, urgency, view and search text."""
     return ticket_service.list_my_tickets(user["user_id"], filters)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=TicketResponse)
 def create_ticket(body: TicketCreate, user: CurrentUser) -> dict[str, Any]:
-    """Create a ticket for the caller. Priority comes from the affected scope."""
+    """Create a ticket for the caller. The internal priority is set from the affected scope."""
     return ticket_service.create_ticket(user["user_id"], body)
 
 

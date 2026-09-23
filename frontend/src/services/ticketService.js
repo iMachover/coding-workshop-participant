@@ -2,7 +2,7 @@ import { api } from './apiClient'
 
 /**
  * The caller's own tickets, most recently updated first.
- * @param {{view?: 'active'|'closed', status?: string, urgency?: string, priority?: string, q?: string}} [filters]
+ * @param {{view?: 'active'|'closed', status?: string, urgency?: string, q?: string}} [filters]
  *   Empty values are ignored. "active" means everything not closed.
  * @param {{signal?: AbortSignal}} [options]
  */
@@ -36,7 +36,7 @@ export function requestEscalation(ticketId, reason) {
 }
 
 /**
- * Create a ticket for the caller. The server sets status, priority and owner.
+ * Create a ticket for the caller. The server sets status and owner.
  * Form values arrive as strings; ids become numbers and blank floor/seat are left out.
  * Resolves with the new ticket; rejects with ApiError (400 wrong location, 422 invalid).
  * @param {Record<string, string>} values
