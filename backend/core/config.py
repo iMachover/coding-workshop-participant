@@ -15,6 +15,7 @@ class Settings:
 
     is_local: bool = os.getenv("IS_LOCAL", "true").lower() == "true"
     postgres_host: str = os.getenv("POSTGRES_HOST", "localhost")
+    postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
     postgres_name: str = os.getenv("POSTGRES_NAME", "codingworkshop")
     postgres_user: str = os.getenv("POSTGRES_USER", "test")
     postgres_pass: str = os.getenv("POSTGRES_PASS", "test")
@@ -23,6 +24,11 @@ class Settings:
             os.getenv("CORS_ORIGINS", "http://localhost:3000")
         )
     )
+
+    @property
+    def postgres_sslmode(self) -> str:
+        """Aurora requires SSL; local Homebrew Postgres has none."""
+        return "disable" if self.is_local else "require"
 
 
 settings = Settings()

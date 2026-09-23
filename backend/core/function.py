@@ -2,17 +2,34 @@
 
 import logging
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from mangum import Mangum
 
 from config import settings
+from errors import (
+    AppError,
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+)
+from routers import auth, health
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # CloudFront forwards /api/core* to this Lambda unchanged, so every route lives under this prefix.
 API_PREFIX = "/api/core"
+
+# Services raise these without knowing about HTTP; this is the one place they become status codes.
+ERROR_STATUS: dict[type[AppError], int] = {
+    BadRequestError: 400,
+    UnauthorizedError: 401,
+    NotFoundError: 404,
+    ConflictError: 409,
+}
 
 app = FastAPI(title="Facilities Helpdesk API")
 
@@ -27,16 +44,26 @@ if settings.is_local:
         allow_headers=["*"],
     )
 
-router = APIRouter(prefix=API_PREFIX)
+
+@app.exception_handler(AppError)
+def handle_app_error(_request: Request, exc: AppError) -> JSONResponse:
+    """Turn a domain error into its HTTP status, in FastAPI's usual {"detail": ...} shape."""
+    status_code = next(
+        (code for error_class, code in ERROR_STATUS.items() if isinstance(exc, error_class)),
+        500,
+    )
+    return JSONResponse(status_code=status_code, content={"detail": exc.message})
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    """Liveness check used to confirm the frontend can reach the API."""
-    return {"status": "ok"}
+@app.exception_handler(Exception)
+def handle_unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
+    """Log anything unexpected and return a generic JSON 500 without internals."""
+    logger.exception("Unhandled error", exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
-app.include_router(router)
+app.include_router(health.router, prefix=API_PREFIX)
+app.include_router(auth.router, prefix=API_PREFIX)
 
 # Lambda entry point: Terraform wires Python services to function.handler.
 handler = Mangum(app, lifespan="off")
