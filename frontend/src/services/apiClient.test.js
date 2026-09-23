@@ -39,6 +39,18 @@ describe('requests', () => {
     expect(JSON.parse(init.body)).toEqual({ email: 'jane@acme.inc' })
   })
 
+  it('sends PUT bodies the same way', async () => {
+    const fetchMock = mockFetch(200, { ticket_id: 5 })
+
+    await expect(api.put('/admin/tickets/5/assignment', { engineer_id: 4 })).resolves.toEqual({ ticket_id: 5 })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/core/admin/tickets/5/assignment')
+    expect(init.method).toBe('PUT')
+    expect(init.headers['Content-Type']).toBe('application/json')
+    expect(JSON.parse(init.body)).toEqual({ engineer_id: 4 })
+  })
+
   it('adds query params, skipping empty values', async () => {
     const fetchMock = mockFetch(200, [])
 

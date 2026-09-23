@@ -97,3 +97,11 @@ export function formatAge(iso, now = Date.now()) {
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h`
   return `${Math.floor(minutes / (24 * 60))} d`
 }
+
+/**
+ * An engineer with their load, for choosing who to assign: "Sam Tech · 2 active, 1 P1".
+ * @param {{full_name: string, active_count: number, p1_count: number}} engineer
+ */
+export function formatEngineerLoad({ full_name: name, active_count: active, p1_count: p1 }) {
+  return `${name} · ${active} active${p1 ? `, ${p1} P1` : ''}`
+}

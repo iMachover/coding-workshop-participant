@@ -38,10 +38,10 @@ FilterSelect.propTypes = {
 
 /**
  * The admin's list controls: active/closed/all and search on top, then status,
- * priority, category, building, assignment and an escalated-only switch. Everything
- * stacks on small screens. Engineer filtering comes with the engineers list (A2).
+ * priority, category, building, assignment, engineer and an escalated-only switch.
+ * Everything stacks on small screens.
  */
-function AdminTicketFilters({ values, onChange, buildings }) {
+function AdminTicketFilters({ values, onChange, buildings, engineers }) {
   const set = (name) => (event) => onChange({ ...values, [name]: event.target.value })
 
   return (
@@ -120,6 +120,14 @@ function AdminTicketFilters({ values, onChange, buildings }) {
           onChange={set('assignment')}
           minWidth={160}
         />
+        <FilterSelect
+          label="Engineer"
+          allLabel="Any engineer"
+          value={values.assigned_to}
+          options={engineers.map((e) => [String(e.user_id), e.full_name])}
+          onChange={set('assigned_to')}
+          minWidth={160}
+        />
         <FormControlLabel
           control={
             <Switch
@@ -143,6 +151,7 @@ AdminTicketFilters.propTypes = {
     category: PropTypes.string.isRequired,
     building_id: PropTypes.string.isRequired,
     assignment: PropTypes.string.isRequired,
+    assigned_to: PropTypes.string.isRequired,
     escalated: PropTypes.bool.isRequired,
   }).isRequired,
   onChange: PropTypes.func.isRequired,
@@ -150,6 +159,12 @@ AdminTicketFilters.propTypes = {
     PropTypes.shape({
       building_id: PropTypes.number.isRequired,
       building_name: PropTypes.string.isRequired,
+    }),
+  ).isRequired,
+  engineers: PropTypes.arrayOf(
+    PropTypes.shape({
+      user_id: PropTypes.number.isRequired,
+      full_name: PropTypes.string.isRequired,
     }),
   ).isRequired,
 }

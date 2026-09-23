@@ -5,6 +5,13 @@ import { choose, createTicketViaApi, registerViaApi, setRole, signIn, signInViaA
 
 const ADMIN_HOME = 'Facility Admin dashboard'
 
+/** Register a user and make them an engineer (no API changes roles yet). */
+async function registerEngineer(request, name) {
+  const engineer = await registerViaApi(request, { name, email: uniqueEmail('engineer') })
+  setRole(engineer.user_id, 'engineer')
+  return engineer
+}
+
 /**
  * Three tickets from two employees, with a unique stamp in every title so other tests'
  * tickets in the shared e2e database can be filtered out by searching for it:
@@ -16,8 +23,7 @@ async function seedTickets(request) {
   const stamp = Date.now()
   const dana = await registerViaApi(request, { name: 'Dana Requester', email: uniqueEmail('dana') })
   const lee = await registerViaApi(request, { name: 'Lee Requester', email: uniqueEmail('lee') })
-  const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
-  setRole(engineer.user_id, 'engineer')
+  const engineer = await registerEngineer(request, 'Sam Tech')
 
   const [floorId, seatId] = sql(`SELECT f.floor_id || '|' || s.seat_id
     FROM seats s JOIN floors f USING (floor_id) JOIN buildings b USING (building_id)
@@ -42,7 +48,7 @@ async function seedTickets(request) {
   expect((await request.post(`/api/core/tickets/${wifi.ticket_id}/escalation`, {
     headers: leeHeaders, data: { reason: 'I have client calls all afternoon.' },
   })).status()).toBe(200)
-  // Stand-in for an admin assigning it: no API assigns tickets yet.
+  // Assigned and already started: no API changes status yet, so this is set directly.
   sql(`UPDATE tickets SET assigned_to_user_id = ${Number(engineer.user_id)}, status = 'in_progress',
        assigned_at = now() WHERE ticket_id = ${Number(printer.ticket_id)}`)
 
@@ -144,6 +150,78 @@ test('an admin triages every ticket from their dashboard', async ({ page, reques
   })
 
   expect(employeeApiCalls).toEqual([])
+})
+
+/**
+ * A2 through the UI: quick-assign from the queue -> the engineer's workload -> filter by
+ * them -> assign and reassign from a ticket's details. The employee sees who has it.
+ */
+test('an admin assigns and reassigns tickets to engineers', async ({ page, request }) => {
+  const { stamp, lee, lights, wifi } = await seedTickets(request)
+  // Names unique to this run, so dropdown options can't collide with other tests' engineers.
+  const ada = await registerEngineer(request, `Ada Wrench ${stamp}`)
+  const bo = await registerEngineer(request, `Bo Pliers ${stamp}`)
+  const admin = await registerAdmin(request)
+  const queue = page.getByRole('region', { name: /Needs an engineer/ })
+  const workload = page.getByRole('region', { name: 'Engineer workload' })
+
+  await signIn(page, admin.email, { home: ADMIN_HOME })
+
+  await test.step('quick-assign the P1 from the queue', async () => {
+    const card = queue.getByRole('listitem').filter({ hasText: lights.title })
+    await card.getByRole('combobox', { name: 'Assign to' }).click()
+    await page.getByRole('option', { name: `${ada.full_name} · 0 active`, exact: true }).click()
+    await card.getByRole('button', { name: 'Assign' }).click()
+
+    await expect(page.getByText(`#${lights.ticket_id} assigned to ${ada.full_name}.`)).toBeVisible()
+    await expect(queue.getByText(lights.title)).toHaveCount(0)
+  })
+
+  await test.step('the workload shows it, and filters All tickets to that engineer', async () => {
+    const adaCard = workload.getByRole('button', { name: new RegExp(`^${ada.full_name}: 1 active`) })
+    await expect(adaCard).toContainText('1 open · 0 in progress · 0 blocked')
+    await expect(adaCard).toContainText('1 P1')
+
+    await adaCard.click()
+    await expect(adaCard).toHaveAttribute('aria-pressed', 'true')
+    const table = page.getByRole('table', { name: 'All tickets' })
+    await expect(table.getByRole('row').getByRole('link')).toHaveText([lights.title])
+    await expect(table.getByRole('row').filter({ hasText: lights.title })).toContainText(ada.full_name)
+  })
+
+  await test.step('assign, then reassign, from the ticket details', async () => {
+    await page.goto(`/admin/tickets/${wifi.ticket_id}`)
+    const panel = page.getByRole('region', { name: 'Assignment' })
+    await expect(panel).toContainText('No engineer yet.')
+
+    await panel.getByRole('combobox', { name: 'Engineer' }).click()
+    await page.getByRole('option', { name: `${ada.full_name} · 1 active, 1 P1`, exact: true }).click()
+    await panel.getByRole('button', { name: 'Assign' }).click()
+    await expect(panel.getByRole('alert')).toHaveText(`Assigned to ${ada.full_name}.`)
+    await expect(page.getByRole('region', { name: 'Details' })).toContainText(ada.full_name)
+
+    await panel.getByRole('combobox', { name: 'Engineer' }).click()
+    await expect(page.getByRole('option', { name: new RegExp(`^${ada.full_name} .*\\(current\\)$`) })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await page.getByRole('option', { name: `${bo.full_name} · 0 active`, exact: true }).click()
+    await panel.getByRole('button', { name: 'Reassign' }).click()
+    await expect(panel.getByRole('alert')).toHaveText(`Assigned to ${bo.full_name}.`)
+    await expect(page.getByRole('region', { name: 'Details' })).toContainText(bo.full_name)
+    // Assigning doesn't start the work: the ticket is still open until the engineer moves it.
+    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toContainText('Open (current status)')
+  })
+
+  await test.step('the employee sees who has their ticket, still without priority', async () => {
+    const response = await request.get(`/api/core/tickets/${wifi.ticket_id}`, {
+      headers: await signInViaApi(request, lee.email),
+    })
+    const ticket = await response.json()
+    expect(ticket.assigned_to_name).toBe(bo.full_name)
+    expect(ticket.acknowledged_at).not.toBeNull()
+    expect(ticket).not.toHaveProperty('priority')
+  })
 })
 
 test('employees cannot open the admin pages', async ({ page, request }) => {

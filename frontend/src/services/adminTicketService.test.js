@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { api } from './apiClient'
-import { getTicket, listAllTickets, listTicketHistory, listTicketNotes } from './adminTicketService'
+import {
+  assignTicket,
+  getTicket,
+  listAllTickets,
+  listTicketHistory,
+  listTicketNotes,
+} from './adminTicketService'
 
 describe('adminTicketService', () => {
   it('lists all tickets with filters as query params and the abort signal', async () => {
@@ -30,5 +36,13 @@ describe('adminTicketService', () => {
       ['/admin/tickets/7/notes', { signal }],
       ['/admin/tickets/7/history', { signal: undefined }],
     ])
+  })
+
+  it('assigns with a numeric engineer id', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ ticket_id: 7 })
+
+    await expect(assignTicket('7', '4')).resolves.toEqual({ ticket_id: 7 })
+
+    expect(put).toHaveBeenCalledWith('/admin/tickets/7/assignment', { engineer_id: 4 })
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatAge, formatDateTime, formatLocation } from './ticketFormat'
+import { formatAge, formatDateTime, formatEngineerLoad, formatLocation } from './ticketFormat'
 
 describe('formatLocation', () => {
   it.each([
@@ -33,5 +33,14 @@ describe('formatAge', () => {
     ['2026-09-13T12:00:00Z', '10 d'],
   ])('%s -> %s', (iso, expected) => {
     expect(formatAge(iso, now)).toBe(expected)
+  })
+})
+
+describe('formatEngineerLoad', () => {
+  it.each([
+    [{ full_name: 'Kim Fixit', active_count: 0, p1_count: 0 }, 'Kim Fixit · 0 active'],
+    [{ full_name: 'Sam Tech', active_count: 3, p1_count: 1 }, 'Sam Tech · 3 active, 1 P1'],
+  ])('%o -> %s', (engineer, expected) => {
+    expect(formatEngineerLoad(engineer)).toBe(expected)
   })
 })

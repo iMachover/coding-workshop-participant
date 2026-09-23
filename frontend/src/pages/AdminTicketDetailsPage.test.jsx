@@ -3,10 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
-import { getTicket, listAllTickets, listTicketHistory, listTicketNotes } from '../services/adminTicketService'
+import {
+  assignTicket,
+  getTicket,
+  listAllTickets,
+  listTicketHistory,
+  listTicketNotes,
+} from '../services/adminTicketService'
+import { listEngineers } from '../services/adminUserService'
 import { ApiError } from '../services/apiClient'
 import { listBuildings } from '../services/locationService'
-import { ADMIN_TICKETS, makeAdminTicket } from '../test/fixtures'
+import { ADMIN_TICKETS, ENGINEERS, makeAdminTicket } from '../test/fixtures'
 import { ALEX, renderWithProviders } from '../test/renderWithProviders'
 
 vi.mock('../services/adminTicketService', () => ({
@@ -14,8 +21,10 @@ vi.mock('../services/adminTicketService', () => ({
   listTicketNotes: vi.fn(),
   listTicketHistory: vi.fn(),
   listAllTickets: vi.fn(),
+  assignTicket: vi.fn(),
 }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
+vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
 
 // GET /admin/tickets/1: an escalated P3 ticket, not yet assigned.
 const TICKET = {
@@ -54,6 +63,8 @@ beforeEach(() => {
   vi.mocked(listTicketHistory).mockReset().mockResolvedValue(HISTORY)
   vi.mocked(listAllTickets).mockReset().mockResolvedValue(ADMIN_TICKETS)
   vi.mocked(listBuildings).mockReset().mockResolvedValue([])
+  vi.mocked(listEngineers).mockReset().mockResolvedValue(ENGINEERS)
+  vi.mocked(assignTicket).mockReset()
 })
 
 describe('AdminTicketDetailsPage: loading and errors', () => {
@@ -162,5 +173,111 @@ describe('AdminTicketDetailsPage: the ticket', () => {
     renderPage('/admin/tickets/1', 375)
     await heading()
     expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveStyle({ flexDirection: 'column' })
+  })
+})
+
+describe('AdminTicketDetailsPage: assignment', () => {
+  const assignment = () => panel('Assignment')
+  const SAM_ON_IT = { ...TICKET, assigned_to_user_id: 4, assigned_to_name: 'Sam Tech', assigned_at: '2026-09-22T11:05:00-04:00', acknowledged_at: '2026-09-22T11:05:00-04:00' }
+
+  it('assigns an unassigned ticket and refreshes the ticket and loads', async () => {
+    vi.mocked(assignTicket).mockResolvedValue(SAM_ON_IT)
+    const user = renderPage()
+    await heading()
+    expect(within(assignment()).getByText('No engineer yet.')).toBeInTheDocument()
+    vi.mocked(getTicket).mockResolvedValue(SAM_ON_IT)
+
+    await user.click(within(assignment()).getByRole('combobox', { name: 'Engineer' }))
+    await user.click(await screen.findByRole('option', { name: 'Sam Tech · 3 active, 1 P1' }))
+    await user.click(within(assignment()).getByRole('button', { name: 'Assign' }))
+
+    expect(assignTicket).toHaveBeenCalledWith(1, '4')
+    expect(await within(assignment()).findByRole('alert')).toHaveTextContent('Assigned to Sam Tech.')
+    expect(await within(panel('Details')).findByText('Sam Tech')).toBeInTheDocument()
+    expect(within(assignment()).getByText(/^Assigned Sep \d/)).toBeInTheDocument()
+    expect(getTicket).toHaveBeenCalledTimes(2)
+    expect(listEngineers).toHaveBeenCalledTimes(2)
+
+    await user.click(within(assignment()).getByRole('button', { name: 'Close' }))
+    expect(within(assignment()).queryByText('Assigned to Sam Tech.')).not.toBeInTheDocument()
+  })
+
+  it('offers to reassign, with the current engineer shown but not selectable', async () => {
+    vi.mocked(getTicket).mockResolvedValue(SAM_ON_IT)
+    const user = renderPage()
+    await heading()
+
+    expect(within(assignment()).getByText('Sam Tech')).toBeInTheDocument()
+    await user.click(within(assignment()).getByRole('combobox', { name: 'Engineer' }))
+    expect(await screen.findByRole('option', { name: 'Sam Tech · 3 active, 1 P1 (current)' })).toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('option', { name: 'Kim Fixit · 0 active' }))
+    expect(within(assignment()).getByRole('button', { name: 'Reassign' })).toBeEnabled()
+  })
+
+  it('shows why the API refused', async () => {
+    vi.mocked(assignTicket).mockRejectedValue(new ApiError('User 6 is not an engineer', { status: 400 }))
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(assignment()).getByRole('combobox', { name: 'Engineer' }))
+    await user.click(await screen.findByRole('option', { name: 'Kim Fixit · 0 active' }))
+    await user.click(within(assignment()).getByRole('button', { name: 'Assign' }))
+
+    expect(await within(assignment()).findByRole('alert')).toHaveTextContent('User 6 is not an engineer')
+    expect(getTicket).toHaveBeenCalledTimes(1)
+  })
+
+  it('never shows a raw error', async () => {
+    vi.mocked(assignTicket).mockRejectedValue(new TypeError('boom'))
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(assignment()).getByRole('combobox', { name: 'Engineer' }))
+    await user.click(await screen.findByRole('option', { name: 'Kim Fixit · 0 active' }))
+    await user.click(within(assignment()).getByRole('button', { name: 'Assign' }))
+
+    expect(await within(assignment()).findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.')
+  })
+
+  it('disables the form while assigning', async () => {
+    let finish
+    vi.mocked(assignTicket).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const user = renderPage()
+    await heading()
+
+    await user.click(within(assignment()).getByRole('combobox', { name: 'Engineer' }))
+    await user.click(await screen.findByRole('option', { name: 'Kim Fixit · 0 active' }))
+    await user.click(within(assignment()).getByRole('button', { name: 'Assign' }))
+
+    expect(within(assignment()).getByRole('button', { name: 'Assigning…' })).toBeDisabled()
+    finish({ ...TICKET, assigned_to_user_id: 6, assigned_to_name: 'Kim Fixit' })
+    expect(await within(assignment()).findByText('Assigned to Kim Fixit.')).toBeInTheDocument()
+  })
+
+  it.each([['resolved', 'Resolved'], ['closed', 'Closed']])('keeps the engineer on a %s ticket', async (status, label) => {
+    vi.mocked(getTicket).mockResolvedValue({ ...SAM_ON_IT, status })
+    renderPage()
+    await heading()
+    expect(within(assignment()).getByText(`${label} tickets keep their engineer and can't be reassigned.`)).toBeInTheDocument()
+    expect(within(assignment()).queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('explains when engineers fail to load, and retries', async () => {
+    vi.mocked(listEngineers)
+      .mockRejectedValueOnce(new ApiError("Can't reach the server. Check your connection and try again.", { status: 0 }))
+      .mockResolvedValue(ENGINEERS)
+    const user = renderPage()
+    await heading()
+
+    expect(await within(assignment()).findByRole('alert')).toHaveTextContent("Can't reach the server.")
+    await user.click(within(assignment()).getByRole('button', { name: 'Try again' }))
+    expect(await within(assignment()).findByRole('combobox', { name: 'Engineer' })).toBeInTheDocument()
+  })
+
+  it('says when there are no engineers yet', async () => {
+    vi.mocked(listEngineers).mockResolvedValue([])
+    renderPage()
+    await heading()
+    expect(await within(assignment()).findByText(/No engineers yet/)).toBeInTheDocument()
   })
 })

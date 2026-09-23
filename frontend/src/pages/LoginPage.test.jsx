@@ -16,6 +16,7 @@ vi.mock('../services/authService', () => ({ login: vi.fn(), register: vi.fn() })
 vi.mock('../services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
+vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn().mockResolvedValue([]) }))
 
 const emailField = () => screen.getByLabelText(/^Work email/)
 const passwordField = () => screen.getByLabelText(/^Password/)

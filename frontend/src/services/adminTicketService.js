@@ -35,3 +35,14 @@ export function listTicketNotes({ ticketId }, { signal } = {}) {
 export function listTicketHistory({ ticketId }, { signal } = {}) {
   return api.get(`/admin/tickets/${Number(ticketId)}/history`, { signal })
 }
+
+/**
+ * Assign or reassign a ticket to an engineer. Resolves with the updated ticket (admin
+ * details shape). Rejects with 409 for a resolved/closed ticket or the same engineer,
+ * 400 if the user isn't an engineer, 404 for a missing ticket.
+ * @param {number|string} ticketId
+ * @param {number|string} engineerId
+ */
+export function assignTicket(ticketId, engineerId) {
+  return api.put(`/admin/tickets/${Number(ticketId)}/assignment`, { engineer_id: Number(engineerId) })
+}

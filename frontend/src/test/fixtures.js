@@ -108,3 +108,27 @@ export const ADMIN_TICKETS = [
     created_at: '2026-09-22T06:00:00-04:00',
   }),
 ]
+
+/** GET /api/core/admin/engineers: lightest load first. Sam already has ticket #5 (ADMIN_TICKETS). */
+export const ENGINEERS = [
+  {
+    user_id: 6,
+    full_name: 'Kim Fixit',
+    email: 'kim@acme.inc',
+    active_count: 0,
+    open_count: 0,
+    in_progress_count: 0,
+    blocked_count: 0,
+    p1_count: 0,
+  },
+  {
+    user_id: 4,
+    full_name: 'Sam Tech',
+    email: 'sam@acme.inc',
+    active_count: 3,
+    open_count: 1,
+    in_progress_count: 1,
+    blocked_count: 1,
+    p1_count: 1,
+  },
+]

@@ -91,6 +91,18 @@
       "key": "adminAccessToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "engineerId",
+      "value": ""
+    },
+    {
+      "key": "otherEngineerId",
+      "value": ""
+    },
+    {
+      "key": "acknowledgedAt",
+      "value": ""
     }
   ],
   "item": [
@@ -1631,7 +1643,7 @@
     },
     {
       "name": "Admin",
-      "description": "Facility Admin routes (`/admin/...`). Needs an existing admin account: set `adminEmail` and `adminPassword` (postman_testing.md → Admin). Runs after Tickets, since it reads the employee's ticket.",
+      "description": "Facility Admin routes (`/admin/...`). Needs an existing admin account: set `adminEmail` and `adminPassword` (postman_testing.md → Admin). Runs after Tickets, since it reads and assigns the employee's ticket. The Assign subfolder also needs two engineer accounts.",
       "auth": {
         "type": "bearer",
         "bearer": [
@@ -2119,6 +2131,399 @@
                   "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Method Not Allowed'));"
                 ]
               }
+            }
+          ]
+        },
+        {
+          "name": "List engineers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/engineers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "engineers"
+              ]
+            },
+            "description": "Every engineer with their active tickets (open, in progress, blocked) by status and P1 count, lightest load first. Saves the first two as `{{engineerId}}` and `{{otherEngineerId}}` for the Assign folder."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.unset('engineerId');",
+                  "pm.collectionVariables.unset('otherEngineerId');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const engineers = pm.response.json();",
+                  "pm.test('Workload shape', () => engineers.forEach((e) => pm.expect(e).to.have.all.keys('user_id', 'full_name', 'email', 'active_count', 'open_count', 'in_progress_count', 'blocked_count', 'p1_count')));",
+                  "pm.test('Lightest load first', () => engineers.slice(1).forEach((e, i) => pm.expect(engineers[i].active_count <= e.active_count).to.be.true));",
+                  "pm.test('At least two engineers exist (postman_testing.md → Setup step 3)', () => pm.expect(engineers.length).to.be.at.least(2));",
+                  "if (engineers.length >= 2) {",
+                  "  pm.collectionVariables.set('engineerId', engineers[0].user_id);",
+                  "  pm.collectionVariables.set('otherEngineerId', engineers[1].user_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign",
+          "description": "Assigning the employee's ticket to engineers. Needs two engineer accounts (postman_testing.md → Setup step 3); **List engineers** saves their ids.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Without two engineers, skip instead of failing each request. List engineers reports why.",
+                  "if (!pm.collectionVariables.get('otherEngineerId')) {",
+                  "  console.warn(`Skipped \"${pm.info.requestName}\": fewer than two engineers.`);",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "item": [
+            {
+              "name": "Assign ticket",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{ticketId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "Gives the employee's ticket to `{{engineerId}}`. Sets assigned_at and, the first time, acknowledged_at. Status stays open.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"engineer_id\": {{engineerId}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const ticket = pm.response.json();",
+                      "pm.test('Assigned to the engineer', () => pm.expect(ticket.assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('engineerId'))));",
+                      "pm.test('First assignment acknowledges it', () => {",
+                      "  pm.expect(ticket.assigned_at).to.be.a('string');",
+                      "  pm.expect(ticket.acknowledged_at).to.eql(ticket.assigned_at);",
+                      "});",
+                      "pm.test('Status is unchanged', () => pm.expect(ticket.status).to.eql('open'));",
+                      "pm.test('Admin detail shape (with priority)', () => pm.expect(ticket).to.include.keys('priority', 'created_by_email', 'assigned_to_name'));",
+                      "pm.collectionVariables.set('acknowledgedAt', ticket.acknowledged_at);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Assign ticket - same engineer again (409)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{ticketId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"engineer_id\": {{engineerId}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Error names the engineer', () => pm.expect(pm.response.json().detail).to.match(/^This ticket is already assigned to /));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Assign ticket - not an engineer (400)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{ticketId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "`{{userId}}` is the employee from Register; only users with the engineer role can be assigned.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"engineer_id\": {{userId}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(`User ${pm.collectionVariables.get('userId')} is not an engineer`));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Assign ticket - unknown ticket (404)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{missingId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{missingId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"engineer_id\": {{engineerId}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                      "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Assign ticket - missing engineer_id (422)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{ticketId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                      "pm.test('Points at engineer_id', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'engineer_id']));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reassign ticket",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/assignment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "tickets",
+                    "{{ticketId}}",
+                    "assignment"
+                  ]
+                },
+                "description": "Moves the ticket to `{{otherEngineerId}}`. acknowledged_at keeps its first value; assigned_at moves.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"engineer_id\": {{otherEngineerId}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const ticket = pm.response.json();",
+                      "pm.test('Now with the other engineer', () => pm.expect(ticket.assigned_to_user_id).to.eql(Number(pm.collectionVariables.get('otherEngineerId'))));",
+                      "pm.test('Keeps the first acknowledgement', () => pm.expect(ticket.acknowledged_at).to.eql(pm.collectionVariables.get('acknowledgedAt')));",
+                      "pm.test('assigned_at moves to the reassignment', () => pm.expect(Date.parse(ticket.assigned_at)).to.be.above(Date.parse(ticket.acknowledged_at)));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List engineers - workload after assigning",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/engineers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "engineers"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const other = pm.response.json().find((e) => e.user_id === Number(pm.collectionVariables.get('otherEngineerId')));",
+                      "pm.test('The new owner counts the ticket as open work', () => {",
+                      "  pm.expect(other.active_count).to.be.at.least(1);",
+                      "  pm.expect(other.open_count).to.be.at.least(1);",
+                      "});"
+                    ]
+                  }
+                }
+              ]
             }
           ]
         }

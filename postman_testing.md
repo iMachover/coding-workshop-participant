@@ -12,7 +12,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Auth](#auth): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
-- [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history
+- [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -27,7 +27,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin) with **48 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin) with **56 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -41,8 +41,10 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `buildingId`, `floorId`, `seatId` | The three location lists | Create ticket |
 | `ticketId` | Create ticket | Get / notes / escalation, and the Admin requests |
 | `password`, `missingId` | Fixed | Login; ids that don't exist (`2147483647`) |
-| `adminEmail`, `adminPassword` | **You** (see [step 3](#3-create-an-admin-account-for-the-admin-folder)) | Login - admin |
+| `adminEmail`, `adminPassword` | **You** (see [step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)) | Login - admin |
 | `adminAccessToken` | Login - admin | The Admin folder's `Authorization: Bearer` header |
+| `engineerId`, `otherEngineerId` | List engineers (the first two) | Assign and reassign |
+| `acknowledgedAt` | Assign ticket | Checking a reassignment keeps the first acknowledgement |
 
 A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
 
@@ -57,17 +59,20 @@ npx newman run postman_collection.json --env-var baseUrl=https://<cloudfront-dom
   --env-var adminEmail=<admin email> --env-var adminPassword=<admin password>
 ```
 
-### 3. Create an admin account (for the Admin folder)
+### 3. Create an admin and two engineers (for the Admin folder)
 
-The Admin folder signs in as an existing Facility Admin. There's no API to promote a user yet, so register one, then change their role in SQL. Locally:
+The Admin folder signs in as an existing Facility Admin, and its Assign subfolder assigns tickets to two existing engineers. There's no API to promote a user yet, so register them, then change their roles in SQL. Locally:
 
 ```sh
-curl http://localhost:8000/api/core/auth/register -H 'Content-Type: application/json' \
-  -d '{"email":"facility.admin@acme.inc","full_name":"Facility Admin","password":"admin-pass-123"}'
+for who in "facility.admin@acme.inc|Facility Admin" "engineer1@acme.inc|Sam Tech" "engineer2@acme.inc|Kim Fixit"; do
+  curl http://localhost:8000/api/core/auth/register -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${who%%|*}\",\"full_name\":\"${who##*|}\",\"password\":\"admin-pass-123\"}"
+done
 psql -U test -d codingworkshop -c "UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'admin') WHERE email = 'facility.admin@acme.inc';"
+psql -U test -d codingworkshop -c "UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'engineer') WHERE email IN ('engineer1@acme.inc', 'engineer2@acme.inc');"
 ```
 
-Then set the collection variables `adminEmail` and `adminPassword` to that account (or pass them with `--env-var` to newman, as above). Without them, **Login - admin** fails with "adminEmail and adminPassword are set" and the rest of the Admin folder is skipped. Everything else still runs.
+Then set the collection variables `adminEmail` and `adminPassword` to the admin account (or pass them with `--env-var` to newman, as above). Without them, **Login - admin** fails with "adminEmail and adminPassword are set" and the rest of the Admin folder is skipped. With fewer than two engineers, **List engineers** fails with "At least two engineers exist" and the Assign subfolder is skipped. Everything else still runs.
 
 Every URL below is written as `{{baseUrl}}/...`.
 
@@ -91,7 +96,7 @@ Routes also check the caller's **role**. `/tickets` is for employees; engineers 
 
 ### Request bodies
 
-POST requests send JSON: **Body → raw → JSON**, which sets `Content-Type: application/json`.
+POST and PUT requests send JSON: **Body → raw → JSON**, which sets `Content-Type: application/json`.
 
 ### Error shapes
 
@@ -733,9 +738,9 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 
 ## Admin
 
-Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). These routes are read-only for now: assigning, closing and admin notes come later.
+Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). Admins can [assign tickets](#assign-or-reassign-a-ticket) to engineers; closing and admin notes come later.
 
-In the collection, the Admin folder's Authorization tab is `Bearer {{adminAccessToken}}`, saved by **Login - admin**. Create the admin account first ([Setup step 3](#3-create-an-admin-account-for-the-admin-folder)).
+In the collection, the Admin folder's Authorization tab is `Bearer {{adminAccessToken}}`, saved by **Login - admin**. Create the admin account first ([Setup step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)).
 
 ### List all tickets
 
@@ -938,6 +943,120 @@ Read-only: `POST` here returns `405 {"detail":"Method Not Allowed"}`.
 
 **Errors:** same as [Get any ticket (admin)](#get-any-ticket-admin) (404 / 422 / 401 / 403).
 
+### List engineers (workload)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/engineers` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+
+**Expected response: `200 OK`.** Every user with the engineer role and their **active** tickets: open, in progress or blocked (resolved and closed don't count), split by status, plus how many are P1. Sorted **lightest load first**, then fewer P1s, then by name. Engineers with nothing assigned are included with every count at 0. Returns `[]` when there are no engineers.
+
+```json
+[
+  {
+    "user_id": 3,
+    "full_name": "Sam Tech",
+    "email": "sam.tech@acme.inc",
+    "active_count": 0,
+    "open_count": 0,
+    "in_progress_count": 0,
+    "blocked_count": 0,
+    "p1_count": 0
+  },
+  {
+    "user_id": 4,
+    "full_name": "Kim Fixit",
+    "email": "kim.fixit@acme.inc",
+    "active_count": 1,
+    "open_count": 1,
+    "in_progress_count": 0,
+    "blocked_count": 0,
+    "p1_count": 1
+  }
+]
+```
+
+**Errors:** 401 (missing, invalid or expired token, see [above](#errors-any-route-can-return)), 403 (employee or engineer).
+
+### Assign or reassign a ticket
+
+| | |
+|---|---|
+| **Method** | `PUT` |
+| **URL** | `{{baseUrl}}/admin/tickets/:ticket_id/assignment` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Request body**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `engineer_id` | integer | yes | A user whose role is `engineer` (see [List engineers](#list-engineers-workload)) |
+
+```json
+{ "engineer_id": 3 }
+```
+
+What it changes:
+
+- `assigned_to_user_id` → the engineer, and `assigned_at` → now (every time, so it records when the current engineer got it).
+- `acknowledged_at` → now on the **first** assignment only; a reassignment keeps the first value.
+- `updated_at` → now.
+- `status` does **not** change: the engineer moves it to In Progress. No status history row is written.
+
+**Expected response: `200 OK`.** The updated ticket, in the [admin details](#get-any-ticket-admin) shape.
+
+```json
+{
+  "ticket_id": 1,
+  "title": "Lobby lights out",
+  "short_description": "x",
+  "description": "y",
+  "category": "electrical",
+  "urgency": "high",
+  "affected_scope": "building",
+  "status": "open",
+  "building_id": 1,
+  "floor_id": null,
+  "seat_id": null,
+  "created_by_user_id": 1,
+  "assigned_to_user_id": 3,
+  "escalation_requested": false,
+  "escalation_reason": null,
+  "blocked_reason": null,
+  "created_at": "2026-09-23T14:28:06.079789-04:00",
+  "updated_at": "2026-09-23T14:28:06.138246-04:00",
+  "acknowledged_at": "2026-09-23T14:28:06.138246-04:00",
+  "assigned_at": "2026-09-23T14:28:06.138246-04:00",
+  "resolved_at": null,
+  "building_name": "Building A",
+  "floor_number": null,
+  "seat_number": null,
+  "assigned_to_name": "Sam Tech",
+  "priority": "P1",
+  "created_by_name": "Jane Doe",
+  "created_by_email": "jane.doe@acme.inc",
+  "created_by_phone": null
+}
+```
+
+After a reassignment to Kim: `assigned_to_name` becomes `"Kim Fixit"`, `assigned_at` moves to the new time (`...14:28:06.172424...`) and `acknowledged_at` stays `...14:28:06.138246...`.
+
+**Errors** (checked in this order)
+
+| Status | When | Body |
+|---|---|---|
+| 404 | Ticket doesn't exist | `{"detail":"Ticket not found"}` |
+| 409 | Ticket is resolved or closed | `{"detail":"Resolved tickets can't be assigned"}` / `{"detail":"Closed tickets can't be assigned"}` |
+| 400 | `engineer_id` isn't a user with the engineer role (an employee, an admin, or no such user) | `{"detail":"User 1 is not an engineer"}` |
+| 409 | Already assigned to that engineer | `{"detail":"This ticket is already assigned to Sam Tech"}` |
+| 422 | `engineer_id` missing, not an integer, or not positive | `loc: ["body","engineer_id"]` |
+| 422 | `ticket_id` not a positive integer | `loc: ["path","ticket_id"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
 ---
 
 ## Suggested test run
@@ -970,3 +1089,9 @@ Read-only: `POST` here returns `405 {"detail":"Method Not Allowed"}`.
 | 22 | `GET /admin/tickets` with the employee's token | 403 |
 | 23 | `GET /admin/tickets/{{ticketId}}` | 200, requester's email and phone |
 | 24 | `GET /admin/tickets/{{ticketId}}/notes` | 200, the employee's note from step 15 |
+| 25 | `GET /admin/engineers` (needs two engineers, Setup step 3) | 200, lightest load first |
+| 26 | `PUT /admin/tickets/{{ticketId}}/assignment` with the first engineer | 200, `acknowledged_at` = `assigned_at`, `status: "open"` |
+| 27 | Same assignment again | 409 |
+| 28 | Assign to the employee's own `{{userId}}` | 400 |
+| 29 | Assign to the second engineer | 200, `acknowledged_at` unchanged, `assigned_at` later |
+| 30 | `GET /admin/engineers` | The second engineer's `open_count` includes the ticket |

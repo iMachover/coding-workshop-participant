@@ -13,6 +13,7 @@ import { ALEX, JANE, renderWithProviders, SAM } from './test/renderWithProviders
 vi.mock('./services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/adminUserService', () => ({ listEngineers: vi.fn().mockResolvedValue([]) }))
 
 const heading = () => screen.getByRole('heading', { level: 1 })
 

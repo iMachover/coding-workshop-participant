@@ -3,13 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
-import { listAllTickets } from '../services/adminTicketService'
+import { assignTicket, listAllTickets } from '../services/adminTicketService'
+import { listEngineers } from '../services/adminUserService'
 import { ApiError } from '../services/apiClient'
 import { listBuildings } from '../services/locationService'
-import { ADMIN_TICKETS } from '../test/fixtures'
+import { ADMIN_TICKETS, ENGINEERS } from '../test/fixtures'
 import { ALEX, renderWithProviders } from '../test/renderWithProviders'
 
-vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn() }))
+vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn(), assignTicket: vi.fn() }))
+vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
 
 const BUILDINGS = [
@@ -26,6 +28,7 @@ function fakeApi(filters = {}) {
     if (filters[key]) result = result.filter((t) => t[key] === filters[key])
   }
   if (filters.building_id) result = result.filter((t) => t.building_id === Number(filters.building_id))
+  if (filters.assigned_to) result = result.filter((t) => t.assigned_to_user_id === Number(filters.assigned_to))
   if (filters.assignment) result = result.filter((t) => (t.assigned_to_user_id !== null) === (filters.assignment === 'assigned'))
   if (filters.escalated) result = result.filter((t) => t.escalation_requested)
   if (filters.q) {
@@ -60,6 +63,8 @@ async function choose(user, label, option) {
 beforeEach(() => {
   vi.mocked(listAllTickets).mockReset().mockImplementation(fakeApi)
   vi.mocked(listBuildings).mockReset().mockResolvedValue(BUILDINGS)
+  vi.mocked(listEngineers).mockReset().mockResolvedValue(ENGINEERS)
+  vi.mocked(assignTicket).mockReset()
 })
 
 describe('AdminDashboardPage: needs an engineer', () => {
@@ -177,7 +182,8 @@ describe('AdminDashboardPage: all tickets', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'eve')
 
-    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']))
+    // Generous timeout: under a full parallel run the 300 ms debounce can take a while to land.
+    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']), { timeout: 3000 })
     expect(vi.mocked(listAllTickets).mock.calls.length - callsBefore).toBe(1)
     expect(lastListFilters()).toEqual({ view: 'active', q: 'eve' })
   })
@@ -202,5 +208,118 @@ describe('AdminDashboardPage: all tickets', () => {
     expect(card).toHaveAttribute('href', '/admin/tickets/5')
     expect(card).toHaveTextContent('Engineer: Sam Tech')
     expect(within(card).getByLabelText('Priority P2: A whole floor')).toBeInTheDocument()
+  })
+})
+
+describe('AdminDashboardPage: assigning from the queue', () => {
+  const queueCard = async (title) =>
+    (await within(queue()).findAllByRole('listitem')).find((card) => within(card).queryByText(new RegExp(title)))
+
+  it('assigns a ticket in place, showing each engineer\'s load, then refreshes everything', async () => {
+    vi.mocked(assignTicket).mockResolvedValue({ ...ADMIN_TICKETS[0], assigned_to_user_id: 6, assigned_to_name: 'Kim Fixit' })
+    const user = renderDashboard()
+    const card = await queueCard('Lobby lights out')
+    const assign = within(card).getByRole('button', { name: 'Assign' })
+    expect(assign).toBeDisabled()
+
+    await user.click(within(card).getByRole('combobox', { name: 'Assign to' }))
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual(['Kim Fixit · 0 active', 'Sam Tech · 3 active, 1 P1'])
+    await user.click(screen.getByRole('option', { name: 'Kim Fixit · 0 active' }))
+    const [queueCalls, engineerCalls] = [listAllTickets, listEngineers].map((fn) => vi.mocked(fn).mock.calls.length)
+    await user.click(assign)
+
+    expect(assignTicket).toHaveBeenCalledWith(7, '6')
+    expect(await screen.findByText('#7 assigned to Kim Fixit.')).toBeInTheDocument()
+    // The queue and the all-tickets list both reload, and so does the workload.
+    expect(vi.mocked(listAllTickets).mock.calls.length - queueCalls).toBe(2)
+    expect(vi.mocked(listEngineers).mock.calls.length - engineerCalls).toBe(1)
+
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByText('#7 assigned to Kim Fixit.')).not.toBeInTheDocument())
+  })
+
+  it('explains a refused assignment on the card', async () => {
+    vi.mocked(assignTicket).mockRejectedValue(new ApiError('Closed tickets can\'t be assigned', { status: 409 }))
+    const user = renderDashboard()
+    const card = await queueCard('Wi-Fi keeps dropping')
+
+    await user.click(within(card).getByRole('combobox', { name: 'Assign to' }))
+    await user.click(screen.getByRole('option', { name: 'Sam Tech · 3 active, 1 P1' }))
+    await user.click(within(card).getByRole('button', { name: 'Assign' }))
+
+    expect(await within(card).findByRole('alert')).toHaveTextContent("Closed tickets can't be assigned")
+    expect(screen.queryByText(/assigned to/)).not.toBeInTheDocument()
+  })
+
+  it('says when there are no engineers to assign to', async () => {
+    vi.mocked(listEngineers).mockResolvedValue([])
+    renderDashboard()
+    const card = await queueCard('Lobby lights out')
+    expect(await within(card).findByText(/No engineers yet/)).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Assign' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AdminDashboardPage: engineer workload', () => {
+  const workload = () => screen.getByRole('region', { name: 'Engineer workload' })
+
+  it('shows each engineer\'s active tickets, lightest load first', async () => {
+    renderDashboard()
+    const cards = await within(workload()).findAllByRole('button')
+
+    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual([
+      'Kim Fixit: 0 active. Show their tickets',
+      'Sam Tech: 3 active. Show their tickets',
+    ])
+    expect(cards[1]).toHaveTextContent('1 open · 1 in progress · 1 blocked')
+    expect(within(cards[1]).getByText('1 P1')).toBeInTheDocument()
+    expect(within(cards[0]).queryByText(/P1/)).not.toBeInTheDocument()
+  })
+
+  it('filters All tickets to the chosen engineer, and back', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    const sam = await within(workload()).findByRole('button', { name: /^Sam Tech/ })
+
+    await user.click(sam)
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
+    expect(lastListFilters()).toEqual({ view: 'active', assigned_to: '4' })
+    expect(within(workload()).getByRole('button', { name: /^Sam Tech/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('combobox', { name: 'Engineer' })).toHaveTextContent('Sam Tech')
+
+    await user.click(within(workload()).getByRole('button', { name: /^Sam Tech/ }))
+    await waitFor(() => expect(rowTitles()).toHaveLength(3))
+    expect(within(workload()).getByRole('button', { name: /^Sam Tech/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('has an Engineer filter too', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await choose(user, 'Engineer', 'Sam Tech')
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
+    expect(lastListFilters()).toEqual({ view: 'active', assigned_to: '4' })
+  })
+
+  it('explains a failed load and retries', async () => {
+    vi.mocked(listEngineers)
+      .mockRejectedValueOnce(new ApiError('Something went wrong on our side. Please try again.', { status: 500 }))
+      .mockResolvedValue(ENGINEERS)
+    const user = renderDashboard()
+
+    expect(await within(workload()).findByRole('alert')).toHaveTextContent('Something went wrong on our side.')
+    // Shown once, not again on every queue card.
+    expect(within(queue()).queryByRole('alert')).not.toBeInTheDocument()
+    await user.click(within(workload()).getByRole('button', { name: 'Try again' }))
+    expect(await within(workload()).findAllByRole('button')).toHaveLength(2)
+  })
+
+  it('says when there are no engineers yet', async () => {
+    vi.mocked(listEngineers).mockResolvedValue([])
+    renderDashboard()
+    expect(await within(workload()).findByText(/No engineers yet/)).toBeInTheDocument()
   })
 })

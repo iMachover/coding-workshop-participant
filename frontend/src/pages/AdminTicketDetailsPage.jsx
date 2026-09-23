@@ -11,6 +11,7 @@ import Typography from '@mui/material/Typography'
 import { Link as RouterLink, useParams } from 'react-router'
 
 import RequesterContact from '../components/admin/RequesterContact'
+import TicketAssignment from '../components/admin/TicketAssignment'
 import BackLink from '../components/BackLink'
 import ErrorState from '../components/ErrorState'
 import Panel from '../components/Panel'
@@ -24,6 +25,7 @@ import TicketWorkflow from '../components/tickets/TicketWorkflow'
 import UrgencyLabel from '../components/tickets/UrgencyLabel'
 import useApiData from '../hooks/useApiData'
 import { getTicket, listTicketHistory, listTicketNotes } from '../services/adminTicketService'
+import { listEngineers } from '../services/adminUserService'
 import { SCOPES } from '../utils/ticketFormat'
 
 function BackToAdminDashboard() {
@@ -53,8 +55,8 @@ function NotFound() {
 
 /**
  * Any ticket, as a Facility Admin sees it: priority, where it is in the workflow and how
- * it got there, its details, who reported it and how to reach them, and every note.
- * Read-only for now; assigning and closing come in later slices.
+ * it got there, its details, who owns it (and assigning it), who reported it and how to
+ * reach them, and every note. Closing comes in a later slice.
  */
 function AdminTicketDetailsPage() {
   const { ticketId } = useParams()
@@ -62,6 +64,7 @@ function AdminTicketDetailsPage() {
   const ticket = useApiData(getTicket, { ticketId }, { skip: !validId })
   const history = useApiData(listTicketHistory, { ticketId }, { skip: !validId })
   const notes = useApiData(listTicketNotes, { ticketId }, { skip: !validId })
+  const engineers = useApiData(listEngineers, {}, { skip: !validId })
 
   if (!validId || ticket.error?.status === 404) return <NotFound />
   if (ticket.error) {
@@ -83,6 +86,12 @@ function AdminTicketDetailsPage() {
   }
 
   const t = ticket.data
+  // The new engineer and dates show in the facts, and the engineers' loads have changed.
+  const refresh = () => {
+    ticket.reload()
+    engineers.reload()
+  }
+
   return (
     <Stack spacing={3}>
       <BackToAdminDashboard />
@@ -125,9 +134,14 @@ function AdminTicketDetailsPage() {
           </Panel>
         </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
-          <Panel title="Requester">
-            <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />
-          </Panel>
+          <Stack spacing={3}>
+            <Panel title="Assignment">
+              <TicketAssignment ticket={t} engineers={engineers} onAssigned={refresh} />
+            </Panel>
+            <Panel title="Requester">
+              <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />
+            </Panel>
+          </Stack>
         </Grid>
       </Grid>
 

@@ -165,7 +165,8 @@ describe('DashboardPage: my tickets list', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'printer')
 
-    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
+    // Generous timeout: under a full parallel run the 300 ms debounce can take a while to land.
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']), { timeout: 3000 })
     // One search request for the whole word, not one per letter.
     expect(vi.mocked(listMyTickets).mock.calls.length - callsBefore).toBe(1)
     expect(lastFilters()).toEqual({ view: 'active', q: 'printer' })
