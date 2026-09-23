@@ -8,6 +8,9 @@ from pydantic import BaseModel, StringConstraints, field_validator
 
 Role = Literal["employee", "engineer", "admin"]
 
+# Postgres INTEGER max. Ids above this are rejected up front instead of erroring in the DB.
+MAX_DB_ID = 2_147_483_647
+
 ACME_EMAIL = re.compile(r"[^@\s]+@acme\.inc")
 
 TrimmedText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -58,3 +61,26 @@ class UserResponse(BaseModel):
     phone_number: str | None
     role: Role
     created_at: datetime
+
+
+class BuildingResponse(BaseModel):
+    """A building, for the location dropdowns."""
+
+    building_id: int
+    building_name: str
+
+
+class FloorResponse(BaseModel):
+    """A floor within a building."""
+
+    floor_id: int
+    floor_number: int
+    building_id: int
+
+
+class SeatResponse(BaseModel):
+    """A seat within a floor."""
+
+    seat_id: int
+    seat_number: str
+    floor_id: int

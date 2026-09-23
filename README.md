@@ -101,6 +101,18 @@ curl http://localhost:8000/api/core/auth/me -H 'X-User-Id: 1'
 # Missing, non-numeric or unknown id: 401
 ```
 
+Locations for the create-ticket dropdowns (Building → Floor → Seat). All need `X-User-Id`.
+
+```sh
+curl http://localhost:8000/api/core/buildings -H 'X-User-Id: 1'
+# [{"building_id":1,"building_name":"Building A"},...]
+curl http://localhost:8000/api/core/buildings/1/floors -H 'X-User-Id: 1'
+# [{"floor_id":1,"floor_number":1,"building_id":1},...]
+curl http://localhost:8000/api/core/floors/3/seats -H 'X-User-Id: 1'
+# [{"seat_id":3,"seat_number":"301","floor_id":3},...]
+# Unknown building or floor: 404. Non-numeric id: 422.
+```
+
 CORS allows the frontend origin:
 
 ```sh

@@ -7,13 +7,14 @@ that uses CurrentUser keeps working as-is.
 
 from typing import Annotated, Any
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Path
 
 from errors import UnauthorizedError
+from schemas import MAX_DB_ID
 from services import auth_service
 
-# Postgres INTEGER range, so a huge header value is a 401 rather than a DB error.
-MAX_USER_ID = 2_147_483_647
+# A numeric id in the URL. Out-of-range values get a 422 instead of reaching the DB.
+IdPath = Annotated[int, Path(ge=1, le=MAX_DB_ID)]
 
 
 def get_current_user(
@@ -24,7 +25,7 @@ def get_current_user(
         user_id = int(x_user_id or "")
     except ValueError:
         raise UnauthorizedError("Missing or invalid X-User-Id header") from None
-    if not 1 <= user_id <= MAX_USER_ID:
+    if not 1 <= user_id <= MAX_DB_ID:
         raise UnauthorizedError("Missing or invalid X-User-Id header")
     return auth_service.get_current_user(user_id)
 

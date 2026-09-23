@@ -15,7 +15,7 @@ from errors import (
     NotFoundError,
     UnauthorizedError,
 )
-from routers import auth, health
+from routers import auth, health, locations
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -64,6 +64,7 @@ def handle_unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(auth.router, prefix=API_PREFIX)
+app.include_router(locations.router, prefix=API_PREFIX)
 
 # Lambda entry point: Terraform wires Python services to function.handler.
 handler = Mangum(app, lifespan="off")
