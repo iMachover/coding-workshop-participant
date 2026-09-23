@@ -4,16 +4,12 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Skeleton from '@mui/material/Skeleton'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
-import Typography from '@mui/material/Typography'
 
-import useAuth from '../../auth/useAuth'
 import { ApiError } from '../../services/apiClient'
 import { addNote } from '../../services/ticketService'
-import { formatDateTime, ROLES } from '../../utils/ticketFormat'
-import ErrorState from '../ErrorState'
+import NoteList from './NoteList'
 
 const NOTE_LIMIT = 2000
 
@@ -91,41 +87,9 @@ AddNoteForm.propTypes = {
  * with a box to add one while the ticket is still open.
  */
 function TicketNotes({ ticketId, closed, notes, onAdded }) {
-  const { user } = useAuth()
-
-  let history
-  if (notes.error) {
-    history = <ErrorState message={notes.error.message} onRetry={notes.reload} />
-  } else if (notes.loading && !notes.data) {
-    history = <Skeleton variant="rounded" height={80} aria-label="Loading notes" />
-  } else if (notes.data.length === 0) {
-    history = <Typography color="text.secondary">No notes yet.</Typography>
-  } else {
-    history = (
-      <Stack component="ol" spacing={2} sx={{ listStyle: 'none', m: 0, p: 0 }}>
-        {notes.data.map((note) => (
-          <Box
-            component="li"
-            key={note.note_id}
-            sx={{ pl: 2, borderLeft: 3, borderColor: note.author_role === 'employee' ? 'divider' : 'primary.main' }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                {note.user_id === user.user_id ? 'You' : note.author_name}
-              </Box>
-              {' · '}
-              {ROLES[note.author_role]} · {formatDateTime(note.created_at)}
-            </Typography>
-            <Typography sx={{ whiteSpace: 'pre-wrap' }}>{note.note_text}</Typography>
-          </Box>
-        ))}
-      </Stack>
-    )
-  }
-
   return (
     <Stack spacing={3}>
-      {history}
+      <NoteList notes={notes} />
       {closed ? (
         <Alert severity="info">This ticket is closed, so new notes can&apos;t be added.</Alert>
       ) : (
@@ -138,12 +102,7 @@ function TicketNotes({ ticketId, closed, notes, onAdded }) {
 TicketNotes.propTypes = {
   ticketId: PropTypes.number.isRequired,
   closed: PropTypes.bool.isRequired,
-  notes: PropTypes.shape({
-    data: PropTypes.array,
-    loading: PropTypes.bool.isRequired,
-    error: PropTypes.instanceOf(Error),
-    reload: PropTypes.func.isRequired,
-  }).isRequired,
+  notes: NoteList.propTypes.notes,
   onAdded: PropTypes.func.isRequired,
 }
 

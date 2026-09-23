@@ -20,6 +20,17 @@ export const URGENCIES = {
   high: { label: 'High', dot: '#C62828' },
 }
 
+/**
+ * Internal triage priority, set from the impact. Staff screens only: employee pages
+ * must never render it. `chip` is the MUI Chip color and variant; the text always
+ * says P1/P2/P3, so the meaning never rests on color alone.
+ */
+export const PRIORITIES = {
+  P1: { label: 'P1', description: 'Building-wide', chip: { color: 'error', variant: 'filled' } },
+  P2: { label: 'P2', description: 'A whole floor', chip: { color: 'warning', variant: 'outlined' } },
+  P3: { label: 'P3', description: 'One person', chip: { color: 'default', variant: 'outlined' } },
+}
+
 /** Impact: who the issue affects (the API's affected_scope). */
 export const SCOPES = {
   me: 'Just me',
@@ -71,4 +82,18 @@ const dateTime = new Intl.DateTimeFormat('en-US', {
  */
 export function formatDateTime(iso) {
   return dateTime.format(new Date(iso))
+}
+
+/**
+ * How long ago something happened, in its largest whole unit: "just now", "12 min",
+ * "3 h", "2 d". For "waiting 3 h" on the admin's triage queue.
+ * @param {string} iso
+ * @param {number} [now] epoch ms, for tests
+ */
+export function formatAge(iso, now = Date.now()) {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min`
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h`
+  return `${Math.floor(minutes / (24 * 60))} d`
 }

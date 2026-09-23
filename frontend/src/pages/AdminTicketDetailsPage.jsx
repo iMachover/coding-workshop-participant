@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
@@ -8,40 +8,42 @@ import Grid from '@mui/material/Grid'
 import Skeleton from '@mui/material/Skeleton'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { Link as RouterLink, useLocation, useParams } from 'react-router'
+import { Link as RouterLink, useParams } from 'react-router'
 
+import RequesterContact from '../components/admin/RequesterContact'
 import BackLink from '../components/BackLink'
 import ErrorState from '../components/ErrorState'
 import Panel from '../components/Panel'
-import EscalationPanel from '../components/tickets/EscalationPanel'
+import EscalatedChip from '../components/tickets/EscalatedChip'
+import NoteList from '../components/tickets/NoteList'
+import PriorityChip from '../components/tickets/PriorityChip'
 import StatusHistory from '../components/tickets/StatusHistory'
 import StatusLabel from '../components/tickets/StatusLabel'
 import TicketFacts from '../components/tickets/TicketFacts'
-import TicketNotes from '../components/tickets/TicketNotes'
 import TicketWorkflow from '../components/tickets/TicketWorkflow'
 import UrgencyLabel from '../components/tickets/UrgencyLabel'
 import useApiData from '../hooks/useApiData'
-import { getMyTicket, listNotes, listStatusHistory } from '../services/ticketService'
+import { getTicket, listTicketHistory, listTicketNotes } from '../services/adminTicketService'
 import { SCOPES } from '../utils/ticketFormat'
 
-function BackToDashboard() {
-  return <BackLink to="/dashboard">Back to dashboard</BackLink>
+function BackToAdminDashboard() {
+  return <BackLink to="/admin">Back to admin dashboard</BackLink>
 }
 
 function NotFound() {
   return (
     <Stack spacing={2}>
-      <BackToDashboard />
+      <BackToAdminDashboard />
       <Card>
         <CardContent>
           <Typography variant="h4" component="h1" gutterBottom>
             Ticket not found
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            It may not exist, or it belongs to someone else.
+            There&apos;s no ticket with this number.
           </Typography>
-          <Button variant="contained" component={RouterLink} to="/dashboard">
-            Go to my dashboard
+          <Button variant="contained" component={RouterLink} to="/admin">
+            Go to the admin dashboard
           </Button>
         </CardContent>
       </Card>
@@ -49,34 +51,23 @@ function NotFound() {
   )
 }
 
-/** Confirms a ticket just created on the Create Ticket page. Dismissible. */
-function CreatedNotice() {
-  const created = useLocation().state?.createdTicket
-  const [dismissed, setDismissed] = useState(false)
-  if (!created || dismissed) return null
-  return (
-    <Alert severity="success" onClose={() => setDismissed(true)}>
-      Ticket created. We&apos;ll keep you posted here as it progresses.
-    </Alert>
-  )
-}
-
 /**
- * One of the employee's tickets: where it is in the workflow, how it got there,
- * its details, the notes conversation, and escalation.
+ * Any ticket, as a Facility Admin sees it: priority, where it is in the workflow and how
+ * it got there, its details, who reported it and how to reach them, and every note.
+ * Read-only for now; assigning and closing come in later slices.
  */
-function TicketDetailsPage() {
+function AdminTicketDetailsPage() {
   const { ticketId } = useParams()
   const validId = /^[1-9]\d{0,9}$/.test(ticketId)
-  const ticket = useApiData(getMyTicket, { ticketId }, { skip: !validId })
-  const history = useApiData(listStatusHistory, { ticketId }, { skip: !validId })
-  const notes = useApiData(listNotes, { ticketId }, { skip: !validId })
+  const ticket = useApiData(getTicket, { ticketId }, { skip: !validId })
+  const history = useApiData(listTicketHistory, { ticketId }, { skip: !validId })
+  const notes = useApiData(listTicketNotes, { ticketId }, { skip: !validId })
 
   if (!validId || ticket.error?.status === 404) return <NotFound />
   if (ticket.error) {
     return (
       <Stack spacing={2}>
-        <BackToDashboard />
+        <BackToAdminDashboard />
         <ErrorState message={ticket.error.message} onRetry={ticket.reload} />
       </Stack>
     )
@@ -92,23 +83,17 @@ function TicketDetailsPage() {
   }
 
   const t = ticket.data
-  // Notes and escalation change updated_at (and the escalation flag), so refresh both.
-  const refresh = () => {
-    ticket.reload()
-    notes.reload()
-  }
-
   return (
     <Stack spacing={3}>
-      <BackToDashboard />
-      <CreatedNotice />
+      <BackToAdminDashboard />
 
       <Box>
         <Typography variant="h4" component="h1">
           #{t.ticket_id} {t.title}
         </Typography>
         {/* gap, not spacing: spacing's margins would indent items that wrap on phones. */}
-        <Stack direction="row" sx={{ mt: 1, flexWrap: 'wrap', columnGap: 3, rowGap: 1 }}>
+        <Stack direction="row" sx={{ mt: 1, flexWrap: 'wrap', alignItems: 'center', columnGap: 3, rowGap: 1 }}>
+          <PriorityChip priority={t.priority} />
           <StatusLabel status={t.status} />
           <Typography component="span" color="text.secondary">
             Urgency: <UrgencyLabel urgency={t.urgency} />
@@ -116,16 +101,20 @@ function TicketDetailsPage() {
           <Typography component="span" color="text.secondary">
             Impact: {SCOPES[t.affected_scope]}
           </Typography>
+          {t.escalation_requested && <EscalatedChip />}
         </Stack>
         <Typography sx={{ mt: 1 }}>{t.short_description}</Typography>
       </Box>
 
+      {t.escalation_requested && (
+        <Alert severity="warning">
+          <AlertTitle>{t.created_by_name} asked for an admin to review this ticket</AlertTitle>
+          <Typography sx={{ whiteSpace: 'pre-wrap' }}>{t.escalation_reason}</Typography>
+        </Alert>
+      )}
+
       <Panel title="Progress">
         <TicketWorkflow status={t.status} blockedReason={t.blocked_reason} />
-      </Panel>
-
-      <Panel title="Status history">
-        <StatusHistory history={history} />
       </Panel>
 
       <Grid container spacing={3}>
@@ -136,17 +125,21 @@ function TicketDetailsPage() {
           </Panel>
         </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
-          <Panel title="Escalation">
-            <EscalationPanel ticket={t} onEscalated={refresh} />
+          <Panel title="Requester">
+            <RequesterContact name={t.created_by_name} email={t.created_by_email} phone={t.created_by_phone} />
           </Panel>
         </Grid>
       </Grid>
 
+      <Panel title="Status history">
+        <StatusHistory history={history} />
+      </Panel>
+
       <Panel title="Notes">
-        <TicketNotes ticketId={t.ticket_id} closed={t.status === 'closed'} notes={notes} onAdded={refresh} />
+        <NoteList notes={notes} />
       </Panel>
     </Stack>
   )
 }
 
-export default TicketDetailsPage
+export default AdminTicketDetailsPage

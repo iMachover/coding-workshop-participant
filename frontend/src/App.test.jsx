@@ -9,8 +9,10 @@ import { getSession } from './services/session'
 import { listMyTickets } from './services/ticketService'
 import { ALEX, JANE, renderWithProviders, SAM } from './test/renderWithProviders'
 
-// The dashboard loads tickets on arrival; these tests only care about routing and sign-in.
+// The dashboards load tickets on arrival; these tests only care about routing and sign-in.
 vi.mock('./services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
 
 const heading = () => screen.getByRole('heading', { level: 1 })
 
@@ -54,12 +56,14 @@ describe('routing by role', () => {
     ['engineer', '/login', 'Engineer workspace', SAM],
     ['engineer', '/register', 'Engineer workspace', SAM],
     ['engineer', '/engineer', 'Engineer workspace', SAM],
-    ['admin', '/', 'Facility Admin workspace', ALEX],
-    ['admin', '/login', 'Facility Admin workspace', ALEX],
-    ['admin', '/admin', 'Facility Admin workspace', ALEX],
-  ])('%s at %s sees "%s"', (_role, route, name, user) => {
+    ['admin', '/', 'Facility Admin dashboard', ALEX],
+    ['admin', '/login', 'Facility Admin dashboard', ALEX],
+    ['admin', '/admin', 'Facility Admin dashboard', ALEX],
+  ])('%s at %s sees "%s"', async (_role, route, name, user) => {
     renderWithProviders(<App />, { route, user })
     expect(heading()).toHaveTextContent(name)
+    // Let the admin dashboard's first loads settle before the test ends.
+    await act(async () => {})
   })
 
   it('tells engineers what their start page will hold, without calling the tickets API', () => {
@@ -69,9 +73,10 @@ describe('routing by role', () => {
     expect(listMyTickets).not.toHaveBeenCalled()
   })
 
-  it('describes the admin dashboard to come', () => {
+  it('gives admins their dashboard, without calling the employee tickets API', async () => {
     renderWithProviders(<App />, { route: '/admin', user: ALEX })
-    expect(screen.getByRole('alert')).toHaveTextContent('The admin dashboard is on its way.')
+    expect(await screen.findByText('Every active ticket has an engineer.')).toBeInTheDocument()
+    expect(listMyTickets).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -79,10 +84,13 @@ describe('routing by role', () => {
     ['engineer', '/tickets/new', '/engineer', 'Engineer', SAM],
     ['engineer', '/tickets/5', '/engineer', 'Engineer', SAM],
     ['engineer', '/admin', '/engineer', 'Engineer', SAM],
+    ['engineer', '/admin/tickets/5', '/engineer', 'Engineer', SAM],
     ['admin', '/dashboard', '/admin', 'Facility Admin', ALEX],
     ['admin', '/engineer', '/admin', 'Facility Admin', ALEX],
     ['employee', '/engineer', '/dashboard', 'Employee', JANE],
     ['employee', '/admin', '/dashboard', 'Employee', JANE],
+    ['employee', '/admin/tickets/5', '/dashboard', 'Employee', JANE],
+    ['admin', '/tickets/5', '/admin', 'Facility Admin', ALEX],
   ])('%s at %s is told it has no access, with a link to %s', (_role, route, home, label, user) => {
     renderWithProviders(<App />, { route, user })
 

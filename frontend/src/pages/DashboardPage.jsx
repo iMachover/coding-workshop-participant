@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import PropTypes from 'prop-types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
-import LinearProgress from '@mui/material/LinearProgress'
 import Skeleton from '@mui/material/Skeleton'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -16,6 +14,7 @@ import ActiveTicketHighlight from '../components/dashboard/ActiveTicketHighlight
 import StatTiles from '../components/dashboard/StatTiles'
 import TicketFilters from '../components/dashboard/TicketFilters'
 import TicketList from '../components/dashboard/TicketList'
+import TicketListSection from '../components/dashboard/TicketListSection'
 import ErrorState from '../components/ErrorState'
 import useDebouncedValue from '../hooks/useDebouncedValue'
 import useMyTickets from '../hooks/useMyTickets'
@@ -39,45 +38,6 @@ function SummarySkeleton() {
       <Skeleton variant="rounded" height={150} />
     </Stack>
   )
-}
-
-/** The filtered list: loading, error, no-match and results states. */
-function TicketListSection({ list, filtersActive, onClearFilters }) {
-  if (list.error) return <ErrorState message={list.error.message} onRetry={list.reload} />
-  if (list.loading && list.tickets.length === 0) {
-    return <Skeleton variant="rounded" height={160} aria-label="Loading tickets" />
-  }
-  if (list.tickets.length === 0) {
-    return (
-      <Card>
-        <CardContent>
-          <Typography gutterBottom>No tickets match these filters.</Typography>
-          {filtersActive && (
-            <Button onClick={onClearFilters} size="small">
-              Clear filters
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
-  return (
-    <Box aria-busy={list.loading}>
-      {list.loading && <LinearProgress sx={{ mb: 1 }} aria-label="Updating tickets" />}
-      <TicketList tickets={list.tickets} />
-    </Box>
-  )
-}
-
-TicketListSection.propTypes = {
-  list: PropTypes.shape({
-    tickets: PropTypes.array.isRequired,
-    loading: PropTypes.bool.isRequired,
-    error: PropTypes.instanceOf(Error),
-    reload: PropTypes.func.isRequired,
-  }).isRequired,
-  filtersActive: PropTypes.bool.isRequired,
-  onClearFilters: PropTypes.func.isRequired,
 }
 
 /**
@@ -136,7 +96,9 @@ function DashboardPage() {
             list={list}
             filtersActive={filtersActive}
             onClearFilters={() => setFilters(DEFAULT_FILTERS)}
-          />
+          >
+            <TicketList tickets={list.tickets} />
+          </TicketListSection>
         </Box>
       </>
     )

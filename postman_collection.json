@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Facilities Helpdesk API (core)",
-    "description": "Every route of the core service. Run the whole collection top to bottom: each request saves what the next ones need (accessToken, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is `Authorization: Bearer {{accessToken}}`, set once at collection level; **Login** saves the token. Full reference: postman_testing.md.",
+    "description": "Every route of the core service. Run the whole collection top to bottom: each request saves what the next ones need (accessToken, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is `Authorization: Bearer {{accessToken}}`, set once at collection level; **Login** saves the token. The Admin folder needs an existing admin account: set `adminEmail` and `adminPassword`. Full reference: postman_testing.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -76,6 +76,21 @@
     {
       "key": "ticketId",
       "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": "",
+      "description": "An existing admin account's email. You set this."
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "description": "That admin's password. You set this."
+    },
+    {
+      "key": "adminAccessToken",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1598,6 +1613,501 @@
               ]
             },
             "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 405', () => pm.response.to.have.status(405));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Method Not Allowed'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Facility Admin routes (`/admin/...`). Needs an existing admin account: set `adminEmail` and `adminPassword` (postman_testing.md → Admin). Runs after Tickets, since it reads the employee's ticket.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{adminAccessToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Without an admin token (credentials not set, or Login - admin failed), skip the admin",
+              "// requests instead of failing each one. Login - admin reports the actual problem.",
+              "const runsWithoutAdmin = ['Login - admin', 'List all tickets - as an employee (403)'];",
+              "if (!runsWithoutAdmin.includes(pm.info.requestName) && !pm.collectionVariables.get('adminAccessToken')) {",
+              "  console.warn(`Skipped \"${pm.info.requestName}\": no admin token.`);",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Login - admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Signs in an existing Facility Admin. There's no API to promote a user yet, so create one first (postman_testing.md → Admin) and set `adminEmail` and `adminPassword`. Saves `{{adminAccessToken}}`; without it the other Admin requests are skipped.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.unset('adminAccessToken');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('adminEmail and adminPassword are set (postman_testing.md → Admin)', () => {",
+                  "  pm.expect(pm.variables.get('adminEmail'), 'adminEmail').to.not.be.empty;",
+                  "  pm.expect(pm.variables.get('adminPassword'), 'adminPassword').to.not.be.empty;",
+                  "});",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Signed in as an admin', () => pm.expect(body.user && body.user.role).to.eql('admin'));",
+                  "if (body.user && body.user.role === 'admin') pm.collectionVariables.set('adminAccessToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets"
+              ]
+            },
+            "description": "Every ticket, whoever created it. Sorted P1 → P3, then oldest created first. See postman_testing.md for all filters."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tickets = pm.response.json();",
+                  "pm.test('Includes the employee\\'s ticket', () => pm.expect(tickets.map((t) => t.ticket_id)).to.include(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Rows carry triage fields', () => tickets.forEach((t) => {",
+                  "  pm.expect(t.priority).to.be.oneOf(['P1', 'P2', 'P3']);",
+                  "  pm.expect(t).to.include.keys('created_by_user_id', 'created_by_name', 'assigned_to_user_id', 'assigned_to_name');",
+                  "}));",
+                  "pm.test('P1 first, then oldest first', () => tickets.slice(1).forEach((t, i) => {",
+                  "  const prev = tickets[i];",
+                  "  pm.expect(prev.priority <= t.priority).to.be.true;",
+                  "  if (prev.priority === t.priority) pm.expect(Date.parse(prev.created_at) <= Date.parse(t.created_at)).to.be.true;",
+                  "}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all tickets - unassigned and escalated",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets?assignment=unassigned&escalated=true&view=active&q={{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "assignment",
+                  "value": "unassigned"
+                },
+                {
+                  "key": "escalated",
+                  "value": "true"
+                },
+                {
+                  "key": "view",
+                  "value": "active"
+                },
+                {
+                  "key": "q",
+                  "value": "{{ticketId}}"
+                }
+              ]
+            },
+            "description": "The dashboard's triage queue (`assignment=unassigned`), narrowed to escalated active tickets and this run's ticket id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tickets = pm.response.json();",
+                  "pm.test('Exactly the employee\\'s ticket', () => pm.expect(tickets.map((t) => t.ticket_id)).to.eql([Number(pm.collectionVariables.get('ticketId'))]));",
+                  "pm.test('Unassigned, escalated, P3 (scope me)', () => {",
+                  "  pm.expect(tickets[0].assigned_to_user_id).to.be.null;",
+                  "  pm.expect(tickets[0].escalation_requested).to.be.true;",
+                  "  pm.expect(tickets[0].priority).to.eql('P3');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all tickets - search by requester email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets?q={{email}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{email}}"
+                }
+              ]
+            },
+            "description": "`q` also matches the requester's name or email (case-insensitive)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const tickets = pm.response.json();",
+                  "pm.test('Finds the ticket', () => pm.expect(tickets.map((t) => t.ticket_id)).to.include(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Only that requester', () => tickets.forEach((t) => pm.expect(t.created_by_user_id).to.eql(Number(pm.collectionVariables.get('userId')))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all tickets - unknown priority (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets?priority=P4",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "priority",
+                  "value": "P4"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at the priority param', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['query', 'priority']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all tickets - as an employee (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets"
+              ]
+            },
+            "description": "Admin routes are admin-only. Uses the employee's `{{accessToken}}`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"You don't have access to this.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": "Any ticket, plus `priority` and the requester's name, email and phone."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('The employee\\'s ticket', () => pm.expect(ticket.ticket_id).to.eql(Number(pm.collectionVariables.get('ticketId'))));",
+                  "pm.test('Shows the priority', () => pm.expect(ticket.priority).to.eql('P3'));",
+                  "pm.test('Requester contact details', () => {",
+                  "  pm.expect(ticket.created_by_email).to.eql(pm.collectionVariables.get('email'));",
+                  "  pm.expect(ticket.created_by_name).to.eql('Postman Tester');",
+                  "  pm.expect(ticket.created_by_phone).to.eql('555-0101');",
+                  "});",
+                  "pm.test('Escalation reason', () => pm.expect(ticket.escalation_reason).to.be.a('string').and.not.be.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket (admin) - unknown id (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{missingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{missingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Ticket not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notes (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "Every note on the ticket, oldest first. Read-only for admins."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const notes = pm.response.json();",
+                  "pm.test('Includes the employee\\'s note', () => pm.expect(notes.some((n) => n.user_id === Number(pm.collectionVariables.get('userId')) && n.author_role === 'employee')).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List status history (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const history = pm.response.json();",
+                  "pm.test('Starts with the ticket being opened', () => {",
+                  "  pm.expect(history[0].from_status).to.be.null;",
+                  "  pm.expect(history[0].to_status).to.eql('open');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add note (admin) - read-only (405)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/tickets/{{ticketId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "tickets",
+                "{{ticketId}}",
+                "notes"
+              ]
+            },
+            "description": "Admins can read notes but not add them yet.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note_text\": \"Admins can't post notes yet.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "event": [
             {

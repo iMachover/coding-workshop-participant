@@ -1,0 +1,206 @@
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import App from '../App'
+import { listAllTickets } from '../services/adminTicketService'
+import { ApiError } from '../services/apiClient'
+import { listBuildings } from '../services/locationService'
+import { ADMIN_TICKETS } from '../test/fixtures'
+import { ALEX, renderWithProviders } from '../test/renderWithProviders'
+
+vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn() }))
+vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
+
+const BUILDINGS = [
+  { building_id: 1, building_name: 'Building A' },
+  { building_id: 2, building_name: 'Building B' },
+]
+
+/** Serve ADMIN_TICKETS like the API would for the given filters (order is already triage order). */
+function fakeApi(filters = {}) {
+  let result = ADMIN_TICKETS
+  if (filters.view === 'active') result = result.filter((t) => t.status !== 'closed')
+  if (filters.view === 'closed') result = result.filter((t) => t.status === 'closed')
+  for (const key of ['status', 'priority', 'category']) {
+    if (filters[key]) result = result.filter((t) => t[key] === filters[key])
+  }
+  if (filters.building_id) result = result.filter((t) => t.building_id === Number(filters.building_id))
+  if (filters.assignment) result = result.filter((t) => (t.assigned_to_user_id !== null) === (filters.assignment === 'assigned'))
+  if (filters.escalated) result = result.filter((t) => t.escalation_requested)
+  if (filters.q) {
+    const q = filters.q.toLowerCase()
+    result = result.filter((t) => t.title.toLowerCase().includes(q) || t.created_by_name.toLowerCase().includes(q))
+  }
+  return Promise.resolve(result)
+}
+
+function renderDashboard({ width = 1280 } = {}) {
+  const user = userEvent.setup()
+  renderWithProviders(<App />, { route: '/admin', user: ALEX, width })
+  return user
+}
+
+const queue = () => screen.getByRole('region', { name: /Needs an engineer/ })
+const table = () => screen.getByRole('table', { name: 'All tickets' })
+const rowTitles = () =>
+  within(table()).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent)
+// The queue always asks for exactly this; every other call is the all-tickets list.
+const QUEUE_FILTERS = { assignment: 'unassigned', view: 'active' }
+const lastListFilters = () =>
+  vi.mocked(listAllTickets).mock.calls.map(([filters]) => filters)
+    .filter((f) => JSON.stringify(f) !== JSON.stringify(QUEUE_FILTERS))
+    .at(-1)
+
+async function choose(user, label, option) {
+  await user.click(screen.getByRole('combobox', { name: label }))
+  await user.click(screen.getByRole('option', { name: option }))
+}
+
+beforeEach(() => {
+  vi.mocked(listAllTickets).mockReset().mockImplementation(fakeApi)
+  vi.mocked(listBuildings).mockReset().mockResolvedValue(BUILDINGS)
+})
+
+describe('AdminDashboardPage: needs an engineer', () => {
+  it('lists active unassigned tickets in triage order, with priority and escalation', async () => {
+    renderDashboard()
+    expect(screen.getByRole('heading', { level: 1, name: 'Facility Admin dashboard' })).toBeInTheDocument()
+
+    const cards = await within(queue()).findAllByRole('listitem')
+    expect(listAllTickets).toHaveBeenCalledWith(QUEUE_FILTERS, expect.anything())
+    expect(within(queue()).getByLabelText('2 unassigned')).toHaveTextContent('2')
+    expect(cards.map((card) => within(card).getByText(/^#\d+/).textContent)).toEqual([
+      '#7 Lobby lights out',
+      '#1 Wi-Fi keeps dropping',
+    ])
+    expect(within(cards[0]).getByLabelText('Priority P1: Building-wide')).toBeInTheDocument()
+    expect(within(cards[0]).getByText(/^Eve Other · waiting \d+ (min|h|d)$/)).toBeInTheDocument()
+    expect(within(cards[0]).queryByText('Escalated')).not.toBeInTheDocument()
+    expect(within(cards[1]).getByText('Escalated')).toBeInTheDocument()
+    expect(within(cards[1]).getByRole('link')).toHaveAttribute('href', '/admin/tickets/1')
+  })
+
+  it('says so when every active ticket has an engineer', async () => {
+    vi.mocked(listAllTickets).mockImplementation((filters) =>
+      filters.assignment === 'unassigned' ? Promise.resolve([]) : fakeApi(filters),
+    )
+    renderDashboard()
+    expect(await within(queue()).findByText('Every active ticket has an engineer.')).toBeInTheDocument()
+    expect(within(queue()).getByLabelText('0 unassigned')).toBeInTheDocument()
+  })
+
+  it('shows a placeholder while the queue loads', () => {
+    vi.mocked(listAllTickets).mockReturnValue(new Promise(() => {}))
+    renderDashboard()
+    expect(screen.getByLabelText('Loading unassigned tickets')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/unassigned$/)).not.toBeInTheDocument()
+  })
+
+  it('explains a failed load and retries', async () => {
+    vi.mocked(listAllTickets)
+      .mockRejectedValueOnce(new ApiError("Can't reach the server. Check your connection and try again.", { status: 0 }))
+      .mockImplementation(fakeApi)
+    const user = renderDashboard()
+
+    expect(await within(queue()).findByRole('alert')).toHaveTextContent("Can't reach the server.")
+    await user.click(within(queue()).getByRole('button', { name: 'Try again' }))
+    expect(await within(queue()).findAllByRole('listitem')).toHaveLength(2)
+  })
+})
+
+describe('AdminDashboardPage: all tickets', () => {
+  it('starts on active tickets in triage order, with requester and engineer', async () => {
+    renderDashboard()
+    await screen.findByRole('table')
+
+    expect(rowTitles()).toEqual(['Lobby lights out', 'Printer jam', 'Wi-Fi keeps dropping'])
+    expect(lastListFilters()).toEqual({ view: 'active' })
+    const [lights, printer] = within(table()).getAllByRole('row').slice(1)
+    expect(within(lights).getByLabelText('Priority P1: Building-wide')).toBeInTheDocument()
+    expect(lights).toHaveTextContent('Eve Other')
+    expect(lights).toHaveTextContent('Unassigned')
+    expect(lights).toHaveTextContent('Building B')
+    expect(printer).toHaveTextContent('In Progress')
+    expect(printer).toHaveTextContent('Sam Tech')
+    expect(within(printer).getByRole('link', { name: 'Printer jam' })).toHaveAttribute('href', '/admin/tickets/5')
+  })
+
+  it('filters by status, priority, category, building and assignment', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await choose(user, 'Priority', 'P1 · Building-wide')
+    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']))
+    expect(lastListFilters()).toEqual({ view: 'active', priority: 'P1' })
+
+    await choose(user, 'Priority', 'All priorities')
+    await choose(user, 'Building', 'Building A')
+    await choose(user, 'Assignment', 'Assigned')
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
+    expect(lastListFilters()).toEqual({ view: 'active', building_id: '1', assignment: 'assigned' })
+
+    await choose(user, 'Assignment', 'Assigned or not')
+    await choose(user, 'Category', 'Network / Internet')
+    await choose(user, 'Status', 'Open')
+    await waitFor(() => expect(rowTitles()).toEqual(['Wi-Fi keeps dropping']))
+    expect(lastListFilters()).toEqual({ view: 'active', building_id: '1', category: 'network', status: 'open' })
+  })
+
+  it('shows only escalated tickets when asked', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await user.click(screen.getByRole('switch', { name: 'Escalated only' }))
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Wi-Fi keeps dropping']))
+    expect(lastListFilters()).toEqual({ view: 'active', escalated: true })
+  })
+
+  it('switches between active, closed and all', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await user.click(screen.getByRole('button', { name: 'Closed' }))
+    await waitFor(() => expect(rowTitles()).toEqual(['Old lamp']))
+    expect(lastListFilters()).toEqual({ view: 'closed' })
+
+    await user.click(screen.getByRole('button', { name: 'All' }))
+    await waitFor(() => expect(rowTitles()).toHaveLength(4))
+    expect(lastListFilters()).toEqual({})
+  })
+
+  it('searches by requester once typing pauses', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    const callsBefore = vi.mocked(listAllTickets).mock.calls.length
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'eve')
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']))
+    expect(vi.mocked(listAllTickets).mock.calls.length - callsBefore).toBe(1)
+    expect(lastListFilters()).toEqual({ view: 'active', q: 'eve' })
+  })
+
+  it('offers to clear filters when nothing matches', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'zzz')
+    expect(await screen.findByText('No tickets match these filters.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await waitFor(() => expect(rowTitles()).toHaveLength(3))
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('')
+  })
+
+  it('shows cards instead of a table on phones', async () => {
+    renderDashboard({ width: 375 })
+    const list = await screen.findByText('#5 Printer jam')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const card = list.closest('a')
+    expect(card).toHaveAttribute('href', '/admin/tickets/5')
+    expect(card).toHaveTextContent('Engineer: Sam Tech')
+    expect(within(card).getByLabelText('Priority P2: A whole floor')).toBeInTheDocument()
+  })
+})

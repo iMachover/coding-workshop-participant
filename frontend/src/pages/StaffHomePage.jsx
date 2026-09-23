@@ -5,15 +5,9 @@ import Typography from '@mui/material/Typography'
 import useAuth from '../auth/useAuth'
 import { roleLabel } from '../utils/roles'
 
-// What each staff role will get here. Placeholder until their API routes exist.
-const COMING_NEXT = {
-  engineer: 'Your ticket queue is on its way. Assigned tickets, status changes and blocking will appear here.',
-  admin: 'The admin dashboard is on its way. All tickets, assigning engineers and managing roles will appear here.',
-}
-
 /**
- * Start page for engineers (/engineer) and facility admins (/admin). It makes no
- * API calls: the employee ticket routes would answer 403 for these roles.
+ * Placeholder start page for engineers (/engineer) until their ticket queue exists.
+ * It makes no API calls: the employee ticket routes would answer 403 for engineers.
  */
 function StaffHomePage() {
   const { user } = useAuth()
@@ -29,7 +23,9 @@ function StaffHomePage() {
           Signed in as {user.full_name} · {label}
         </Typography>
       </div>
-      <Alert severity="info">{COMING_NEXT[user.role]}</Alert>
+      <Alert severity="info">
+        Your ticket queue is on its way. Assigned tickets, status changes and blocking will appear here.
+      </Alert>
     </Stack>
   )
 }

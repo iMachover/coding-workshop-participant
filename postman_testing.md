@@ -12,6 +12,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Auth](#auth): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
+- [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -26,7 +27,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets) with **37 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin) with **48 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -38,8 +39,10 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `otherAccessToken` | "Login - second user" | Checking you can't read another user's ticket |
 | `userId` | Register, then Login | Checking `/auth/me` and the ticket's creator |
 | `buildingId`, `floorId`, `seatId` | The three location lists | Create ticket |
-| `ticketId` | Create ticket | Get / notes / escalation |
+| `ticketId` | Create ticket | Get / notes / escalation, and the Admin requests |
 | `password`, `missingId` | Fixed | Login; ids that don't exist (`2147483647`) |
+| `adminEmail`, `adminPassword` | **You** (see [step 3](#3-create-an-admin-account-for-the-admin-folder)) | Login - admin |
+| `adminAccessToken` | Login - admin | The Admin folder's `Authorization: Bearer` header |
 
 A new user and ticket are created on each run, so it can be re-run without resetting the database. To send a single request by hand, run **Auth → Register** and **Login** first so `accessToken` is set. The token lasts 1 hour; after that, protected requests return 401 until you run **Login** again.
 
@@ -48,9 +51,23 @@ A new user and ticket are created on each run, so it can be re-run without reset
 **From the command line** (same tests, no Postman app needed):
 
 ```sh
-npx newman run postman_collection.json
-npx newman run postman_collection.json --env-var baseUrl=https://<cloudfront-domain>/api/core
+npx newman run postman_collection.json \
+  --env-var adminEmail=facility.admin@acme.inc --env-var adminPassword=admin-pass-123
+npx newman run postman_collection.json --env-var baseUrl=https://<cloudfront-domain>/api/core \
+  --env-var adminEmail=<admin email> --env-var adminPassword=<admin password>
 ```
+
+### 3. Create an admin account (for the Admin folder)
+
+The Admin folder signs in as an existing Facility Admin. There's no API to promote a user yet, so register one, then change their role in SQL. Locally:
+
+```sh
+curl http://localhost:8000/api/core/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"facility.admin@acme.inc","full_name":"Facility Admin","password":"admin-pass-123"}'
+psql -U test -d codingworkshop -c "UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'admin') WHERE email = 'facility.admin@acme.inc';"
+```
+
+Then set the collection variables `adminEmail` and `adminPassword` to that account (or pass them with `--env-var` to newman, as above). Without them, **Login - admin** fails with "adminEmail and adminPassword are set" and the rest of the Admin folder is skipped. Everything else still runs.
 
 Every URL below is written as `{{baseUrl}}/...`.
 
@@ -70,7 +87,7 @@ The collection sends it automatically: its **Authorization** tab is type *Bearer
 
 On every request the server verifies the token's signature and expiry, then reloads the user from the database. So a deleted account, or a role changed since sign-in, stops the token working at once. The old dev-only `X-User-Id` header is gone: sending it does nothing.
 
-Routes also check the caller's **role**. `/tickets` is for employees; engineers and admins get 403 there. `/auth/me` and the location lists work for every signed-in role.
+Routes also check the caller's **role**. `/tickets` is for employees; engineers and admins get 403 there. `/admin/...` is for Facility Admins; employees and engineers get 403 there. `/auth/me` and the location lists work for every signed-in role.
 
 ### Request bodies
 
@@ -364,7 +381,7 @@ Seat ids aren't sequential within a floor. Always take them from this response.
 
 ## Tickets
 
-Every ticket route acts on behalf of the token's user and is **employee-only**: engineers and admins get `403 {"detail":"You don't have access to this."}` (their own routes come later). Employees only ever see **their own** tickets: someone else's ticket returns **404, not 403**, so its existence isn't revealed. The server stores an internal `priority` (P1–P3) for engineers and admins, and it never appears in these responses.
+Every ticket route acts on behalf of the token's user and is **employee-only**: engineers and admins get `403 {"detail":"You don't have access to this."}` (admins use [their own routes](#admin); engineers' come later). Employees only ever see **their own** tickets: someone else's ticket returns **404, not 403**, so its existence isn't revealed. The server stores an internal `priority` (P1–P3) for engineers and admins, and it never appears in these responses.
 
 ### List my tickets
 
@@ -714,6 +731,215 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 
 ---
 
+## Admin
+
+Facility Admin routes. **Admin-only**: employees and engineers get `403 {"detail":"You don't have access to this."}`. Admins see **every** ticket, whoever created it, including its internal `priority` (P1–P3). These routes are read-only for now: assigning, closing and admin notes come later.
+
+In the collection, the Admin folder's Authorization tab is `Bearer {{adminAccessToken}}`, saved by **Login - admin**. Create the admin account first ([Setup step 3](#3-create-an-admin-account-for-the-admin-folder)).
+
+### List all tickets
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/tickets` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+
+**Query params** (all optional, combined with AND)
+
+| Param | Values | Notes |
+|---|---|---|
+| `view` | `active`, `closed` | `active` = everything not closed |
+| `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` | |
+| `priority` | `P1`, `P2`, `P3` | |
+| `urgency` | `low`, `medium`, `high` | |
+| `category` | see [Enum values](#enum-values) | |
+| `building_id` | positive integer | An unknown building just matches nothing |
+| `assignment` | `unassigned`, `assigned` | `unassigned` is the dashboard's triage queue |
+| `assigned_to` | positive integer | One engineer's user id |
+| `escalated` | `true`, `false` | Tickets the employee asked an admin to review |
+| `q` | text, max 100 | Case-insensitive match on title, short description, **requester name or email**, or an exact ticket id |
+
+Examples: `{{baseUrl}}/admin/tickets?assignment=unassigned`, `{{baseUrl}}/admin/tickets?escalated=true&view=active`, `{{baseUrl}}/admin/tickets?q=eve%20other`
+
+**Expected response: `200 OK`.** Sorted for triage: **priority first (P1, P2, P3), then the oldest created first**. Each row is the [employee list](#list-my-tickets) row plus `priority`, `created_by_user_id`, `created_by_name`, `assigned_to_user_id` and `assigned_to_name`. Returns `[]` when nothing matches.
+
+```json
+[
+  {
+    "ticket_id": 3,
+    "title": "Lobby lights out",
+    "short_description": "Whole lobby is dark",
+    "category": "electrical",
+    "status": "open",
+    "urgency": "high",
+    "affected_scope": "building",
+    "escalation_requested": false,
+    "building_id": 1,
+    "building_name": "Building A",
+    "floor_id": null,
+    "floor_number": null,
+    "seat_id": null,
+    "seat_number": null,
+    "created_at": "2026-09-23T13:30:56.700548-04:00",
+    "updated_at": "2026-09-23T13:30:56.700548-04:00",
+    "priority": "P1",
+    "created_by_user_id": 1,
+    "created_by_name": "Jane Doe",
+    "assigned_to_user_id": null,
+    "assigned_to_name": null
+  },
+  {
+    "ticket_id": 2,
+    "title": "Printer jam",
+    "short_description": "Tray 2 is stuck",
+    "category": "printer",
+    "status": "in_progress",
+    "urgency": "high",
+    "affected_scope": "floor",
+    "escalation_requested": false,
+    "building_id": 1,
+    "building_name": "Building A",
+    "floor_id": 3,
+    "floor_number": 3,
+    "seat_id": null,
+    "seat_number": null,
+    "created_at": "2026-09-23T13:30:56.685796-04:00",
+    "updated_at": "2026-09-23T13:30:56.685796-04:00",
+    "priority": "P2",
+    "created_by_user_id": 2,
+    "created_by_name": "Eve Other",
+    "assigned_to_user_id": 4,
+    "assigned_to_name": "Sam Tech"
+  }
+]
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 422 | Unknown value (e.g. `priority=P4`, `assignment=none`, `escalated=maybe`) | FastAPI validation list, e.g. `loc: ["query","priority"]` |
+| 422 | Unknown parameter | `type: "extra_forbidden"` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+Filters combine with AND, so contradictory ones (`assignment=unassigned&assigned_to=4`) return `[]`, not an error.
+
+### Get any ticket (admin)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/tickets/:ticket_id` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.** The [employee details](#get-one-of-my-tickets) plus `priority` and the requester's `created_by_name`, `created_by_email` and `created_by_phone` (null if they didn't give one).
+
+```json
+{
+  "ticket_id": 1,
+  "title": "Wi-Fi keeps dropping",
+  "short_description": "Disconnects every few minutes",
+  "description": "My laptop loses Wi-Fi every 5-10 minutes.",
+  "category": "network",
+  "urgency": "medium",
+  "affected_scope": "me",
+  "status": "open",
+  "building_id": 1,
+  "floor_id": 3,
+  "seat_id": 3,
+  "created_by_user_id": 1,
+  "assigned_to_user_id": null,
+  "escalation_requested": true,
+  "escalation_reason": "I have client calls all afternoon.",
+  "blocked_reason": null,
+  "created_at": "2026-09-23T13:30:56.659784-04:00",
+  "updated_at": "2026-09-23T13:30:56.766215-04:00",
+  "acknowledged_at": null,
+  "assigned_at": null,
+  "resolved_at": null,
+  "building_name": "Building A",
+  "floor_number": 3,
+  "seat_number": "301",
+  "assigned_to_name": null,
+  "priority": "P3",
+  "created_by_name": "Jane Doe",
+  "created_by_email": "jane.doe@acme.inc",
+  "created_by_phone": "555-0100"
+}
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 404 | Ticket doesn't exist | `{"detail":"Ticket not found"}` |
+| 422 | `ticket_id` not a positive integer | `loc: ["path","ticket_id"]` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
+
+### List notes on any ticket (admin)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/tickets/:ticket_id/notes` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.** Every note, from the employee and engineers alike, oldest first. Same shape as [List notes on a ticket](#list-notes-on-a-ticket).
+
+```json
+[
+  {
+    "note_id": 1,
+    "ticket_id": 1,
+    "user_id": 1,
+    "author_name": "Jane Doe",
+    "author_role": "employee",
+    "note_text": "Still dropping after a restart.",
+    "created_at": "2026-09-23T13:30:56.766215-04:00"
+  }
+]
+```
+
+Read-only: `POST` here returns `405 {"detail":"Method Not Allowed"}`.
+
+**Errors:** same as [Get any ticket (admin)](#get-any-ticket-admin) (404 / 422 / 401 / 403).
+
+### List status history of any ticket (admin)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **URL** | `{{baseUrl}}/admin/tickets/:ticket_id/history` |
+| **Auth** | `Authorization: Bearer {{adminAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+**Expected response: `200 OK`.** Same shape as [List status history](#list-status-history), oldest first.
+
+```json
+[
+  {
+    "history_id": 2,
+    "ticket_id": 2,
+    "from_status": null,
+    "to_status": "open",
+    "changed_by_user_id": 2,
+    "changed_by_name": "Eve Other",
+    "changed_by_role": "employee",
+    "reason": null,
+    "changed_at": "2026-09-23T13:30:56.685796-04:00"
+  }
+]
+```
+
+**Errors:** same as [Get any ticket (admin)](#get-any-ticket-admin) (404 / 422 / 401 / 403).
+
+---
+
 ## Suggested test run
 
 **Run collection** does all of this (and a few more error cases) automatically. The table is the short version, if you'd rather click through by hand. Run the steps in order; each builds on the one before.
@@ -737,3 +963,10 @@ Asks a Facility Admin to review the ticket. Allowed **once per ticket**.
 | 15 | `POST /tickets/{{ticketId}}/notes` | 201 |
 | 16 | `POST /tickets/{{ticketId}}/escalation` | 200, `escalation_requested: true` |
 | 17 | Same escalation again | 409 |
+| 18 | `POST /auth/login` as your admin account (sets `{{adminAccessToken}}`) | 200, `user.role: "admin"` |
+| 19 | `GET /admin/tickets` | 200, includes `{{ticketId}}`, every row has `priority`, P1 rows first |
+| 20 | `GET /admin/tickets?assignment=unassigned&escalated=true&q={{ticketId}}` | 200, just that ticket, `priority: "P3"` |
+| 21 | `GET /admin/tickets?priority=P4` | 422 |
+| 22 | `GET /admin/tickets` with the employee's token | 403 |
+| 23 | `GET /admin/tickets/{{ticketId}}` | 200, requester's email and phone |
+| 24 | `GET /admin/tickets/{{ticketId}}/notes` | 200, the employee's note from step 15 |

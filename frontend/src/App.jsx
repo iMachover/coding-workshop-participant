@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router'
 
 import useAuth from './auth/useAuth'
 import AppLayout from './components/AppLayout'
+import AdminDashboardPage from './pages/AdminDashboardPage'
+import AdminTicketDetailsPage from './pages/AdminTicketDetailsPage'
 import CreateTicketPage from './pages/CreateTicketPage'
 import GuestRoute from './components/GuestRoute'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -21,7 +23,8 @@ function HomeRedirect() {
 
 /**
  * Route table: sign-in pages for guests, then one group per role. Employees report
- * and follow their own tickets; engineers and admins have their own start pages.
+ * and follow their own tickets; Facility Admins triage every ticket; engineers have
+ * a placeholder start page for now.
  */
 function App() {
   return (
@@ -41,7 +44,8 @@ function App() {
           <Route path="engineer" element={<StaffHomePage />} />
         </Route>
         <Route element={<ProtectedRoute roles={['admin']} />}>
-          <Route path="admin" element={<StaffHomePage />} />
+          <Route path="admin" element={<AdminDashboardPage />} />
+          <Route path="admin/tickets/:ticketId" element={<AdminTicketDetailsPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
