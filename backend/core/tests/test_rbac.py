@@ -50,6 +50,7 @@ ENGINEER_ONLY = [
     ("GET", "/engineer/tickets/{ticket_id}/history", None),
     ("GET", "/engineer/tickets/{ticket_id}/notes", None),
     ("POST", "/engineer/tickets/{ticket_id}/notes", {"note_text": "hello"}),
+    ("POST", "/engineer/tickets/{ticket_id}/status", {"status": "in_progress"}),
 ]
 
 

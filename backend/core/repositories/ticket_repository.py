@@ -201,6 +201,31 @@ def assign(conn: psycopg.Connection, ticket_id: int, engineer_id: int) -> None:
     )
 
 
+def set_status(
+    conn: psycopg.Connection, ticket_id: int, status: str, *, blocked_reason: str | None = None
+) -> None:
+    """Move a ticket to a new status and keep the fields that depend on it in step.
+
+    blocked_reason only means something while blocked, so it's cleared otherwise.
+    resolved_at is stamped on resolving, kept on closing, and cleared when work starts
+    again. The caller records the change in the status history.
+    """
+    conn.execute(
+        """
+        UPDATE tickets
+        SET status = %(status)s,
+            blocked_reason = CASE WHEN %(status)s = 'blocked' THEN %(blocked_reason)s END,
+            resolved_at = CASE %(status)s
+                              WHEN 'resolved' THEN now()
+                              WHEN 'closed' THEN resolved_at
+                          END,
+            updated_at = now()
+        WHERE ticket_id = %(ticket_id)s
+        """,
+        {"status": status, "blocked_reason": blocked_reason, "ticket_id": ticket_id},
+    )
+
+
 def request_escalation(conn: psycopg.Connection, ticket_id: int, reason: str) -> None:
     """Flag a ticket for admin review with the employee's reason."""
     conn.execute(

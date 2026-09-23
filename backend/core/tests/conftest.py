@@ -231,3 +231,15 @@ def engineers(
         set_role(user["user_id"], "engineer")
         ids[name.split()[0].lower()] = user["user_id"]
     return ids
+
+
+@pytest.fixture
+def sam(engineers: dict[str, int]) -> Headers:
+    """Headers for the engineer Sam Tech."""
+    return bearer({"user_id": engineers["sam"], "role": "engineer"})
+
+
+@pytest.fixture
+def kim(engineers: dict[str, int]) -> Headers:
+    """Headers for the engineer Kim Fixit."""
+    return bearer({"user_id": engineers["kim"], "role": "engineer"})

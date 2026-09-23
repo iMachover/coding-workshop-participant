@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
 import { ApiError } from '../services/apiClient'
-import { listMyQueue } from '../services/engineerTicketService'
+import { changeTicketStatus, listMyQueue } from '../services/engineerTicketService'
 import { listBuildings } from '../services/locationService'
 import { QUEUE } from '../test/fixtures'
 import { renderWithProviders, SAM } from '../test/renderWithProviders'
 
-vi.mock('../services/engineerTicketService', () => ({ listMyQueue: vi.fn() }))
+vi.mock('../services/engineerTicketService', () => ({ listMyQueue: vi.fn(), changeTicketStatus: vi.fn() }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
 
 const CLOSED = { ...QUEUE[0], ticket_id: 3, title: 'Old lamp', status: 'closed', priority: 'P3' }
@@ -47,6 +47,7 @@ async function choose(user, label, option) {
 
 beforeEach(() => {
   vi.mocked(listMyQueue).mockReset().mockImplementation(fakeApi)
+  vi.mocked(changeTicketStatus).mockReset()
   vi.mocked(listBuildings).mockReset().mockResolvedValue([
     { building_id: 1, building_name: 'Building A' },
     { building_id: 2, building_name: 'Building B' },
@@ -199,5 +200,66 @@ describe('EngineerDashboardPage: my tickets', () => {
     expect(card).toHaveAttribute('href', '/engineer/tickets/5')
     expect(card).toHaveTextContent(/Opened /)
     expect(card).not.toHaveTextContent('Engineer:')
+  })
+})
+
+describe('EngineerDashboardPage: starting work', () => {
+  const nothingInProgress = (filters) =>
+    fakeApi(filters).then((tickets) => tickets.filter((t) => t.status !== 'in_progress'))
+
+  it('starts the up-next ticket from the card, then refreshes the queue', async () => {
+    vi.mocked(listMyQueue).mockImplementation(nothingInProgress)
+    vi.mocked(changeTicketStatus).mockResolvedValue({ ...QUEUE[0], status: 'in_progress' })
+    const user = renderDashboard()
+    const card = await screen.findByRole('region', { name: 'Up next' })
+    const loads = vi.mocked(listMyQueue).mock.calls.length
+    vi.mocked(listMyQueue).mockImplementation((filters) =>
+      nothingInProgress(filters).then((tickets) =>
+        tickets.map((t) => (t.ticket_id === 7 ? { ...t, status: 'in_progress' } : t)),
+      ),
+    )
+
+    await user.click(within(card).getByRole('button', { name: 'Start work' }))
+
+    expect(changeTicketStatus).toHaveBeenCalledWith(7, 'in_progress')
+    const current = await screen.findByRole('region', { name: 'Current ticket' })
+    expect(current).toHaveTextContent('#7 Lobby lights out')
+    expect(within(current).queryByRole('button', { name: 'Start work' })).not.toBeInTheDocument()
+    // The summary and the list both reload.
+    expect(vi.mocked(listMyQueue).mock.calls.length - loads).toBe(2)
+  })
+
+  it('explains a refused start on the card', async () => {
+    vi.mocked(listMyQueue).mockImplementation(nothingInProgress)
+    vi.mocked(changeTicketStatus).mockRejectedValueOnce(new ApiError('Ticket not found', { status: 404 }))
+    vi.mocked(changeTicketStatus).mockRejectedValueOnce(new TypeError('boom'))
+    const user = renderDashboard()
+    const card = await screen.findByRole('region', { name: 'Up next' })
+
+    await user.click(within(card).getByRole('button', { name: 'Start work' }))
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Ticket not found')
+
+    await user.click(within(card).getByRole('button', { name: 'Start work' }))
+    await waitFor(() =>
+      expect(within(card).getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.'),
+    )
+  })
+
+  it('shows Starting… while it saves', async () => {
+    vi.mocked(listMyQueue).mockImplementation(nothingInProgress)
+    vi.mocked(changeTicketStatus).mockReturnValue(new Promise(() => {}))
+    const user = renderDashboard()
+    const card = await screen.findByRole('region', { name: 'Up next' })
+
+    await user.click(within(card).getByRole('button', { name: 'Start work' }))
+
+    expect(within(card).getByRole('button', { name: 'Starting…' })).toBeDisabled()
+  })
+
+  it('offers no Start button for the ticket already in progress', async () => {
+    renderDashboard()
+    const card = await screen.findByRole('region', { name: 'Current ticket' })
+    expect(within(card).queryByRole('button', { name: 'Start work' })).not.toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Open ticket' })).toBeInTheDocument()
   })
 })

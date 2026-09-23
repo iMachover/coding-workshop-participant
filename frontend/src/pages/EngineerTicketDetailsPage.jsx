@@ -1,6 +1,8 @@
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
+import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
 import Skeleton from '@mui/material/Skeleton'
 import Stack from '@mui/material/Stack'
@@ -8,6 +10,7 @@ import Typography from '@mui/material/Typography'
 import { Link as RouterLink, useParams } from 'react-router'
 
 import BackLink from '../components/BackLink'
+import StatusControls from '../components/engineer/StatusControls'
 import ErrorState from '../components/ErrorState'
 import Panel from '../components/Panel'
 import RequesterContact from '../components/tickets/RequesterContact'
@@ -50,9 +53,9 @@ function NotFound() {
 }
 
 /**
- * One of the engineer's tickets: priority, where it is in the workflow and how it got
- * there, its details, how to reach the requester, and the notes conversation (they can
- * add to it until the ticket is closed). Status controls come in E2.
+ * One of the engineer's tickets: priority, where it is in the workflow (with the moves
+ * they can make from here) and how it got there, its details, how to reach the requester,
+ * and the notes conversation (they can add to it until the ticket is closed).
  */
 function EngineerTicketDetailsPage() {
   const { ticketId } = useParams()
@@ -82,9 +85,14 @@ function EngineerTicketDetailsPage() {
 
   const t = ticket.data
   // A new note moves the ticket's updated_at, which the facts show.
-  const refresh = () => {
+  const refreshAfterNote = () => {
     ticket.reload()
     notes.reload()
+  }
+  // A status change moves the workflow, the facts (e.g. Resolved) and the history.
+  const refreshAfterMove = () => {
+    ticket.reload()
+    history.reload()
   }
 
   return (
@@ -94,6 +102,10 @@ function EngineerTicketDetailsPage() {
 
       <Panel title="Progress">
         <TicketWorkflow status={t.status} blockedReason={t.blocked_reason} />
+        <Divider sx={{ my: 3 }} />
+        <Box component="section" aria-label="Change status">
+          <StatusControls ticketId={t.ticket_id} status={t.status} onChanged={refreshAfterMove} />
+        </Box>
       </Panel>
 
       <Grid container spacing={3}>
@@ -121,7 +133,7 @@ function EngineerTicketDetailsPage() {
           notes={notes}
           addNote={addAssignedTicketNote}
           placeholder="Tell the requester what you've found or what happens next."
-          onAdded={refresh}
+          onAdded={refreshAfterNote}
         />
       </Panel>
     </Stack>

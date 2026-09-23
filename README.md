@@ -100,6 +100,7 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_admin_assignment.py` | Assigning and reassigning: acknowledged once, `assigned_at` moves, status and history untouched, 409 for finished tickets or the same engineer, 400 for non-engineers, 404, 422. Engineer workload: only active tickets count, by status and P1, lightest first |
 | `test_admin_users.py` | The people list (by name, role and active-ticket counts, role filter, name/email search, 422s) and role changes: promoting signs the person out and makes them assignable, demoting is blocked while they have active tickets, same role 409, admin accounts 403, `admin` can't be given (422), 404 |
 | `test_engineer_tickets.py` | An engineer's queue: only their assigned tickets, triage order, every filter and search, 422s (including trying `assigned_to`); details with priority and requester contact; other people's, unassigned and reassigned-away tickets look missing (404); notes the employee also sees, allowed until closed (409); history |
+| `test_engineer_status.py` | Status changes: start, block and unblock (reason kept, then cleared), resolve and reopen (`resolved_at` set, then cleared), the whole workflow recorded in order, the employee seeing reasons but not priority, workload following along; every move the workflow refuses (409 with a hint), missing or bad reasons and statuses (422), other people's tickets (404) |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 | `test_status_history.py` | Creating a ticket records it as opened, a reopened ticket keeps every step in order, the table's constraints, and `schema.sql` backfilling tickets made before the history existed |
 
@@ -138,7 +139,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 
 | Spec | Covers |
 |---|---|
-| `engineer-journey.spec.js` | An engineer signs in to My queue → "Up next" and the counts → their tickets only, in triage order, with filters → once one is in progress it's the Current ticket → its details (priority, requester) → add a note the employee sees → someone else's ticket looks missing. Also fits a phone. |
+| `engineer-journey.spec.js` | An engineer signs in to My queue → "Up next" and the counts → their tickets only, in triage order, with filters → Start work from the card, which makes it the Current ticket → its details (priority, requester) → add a note → block it with a reason, unblock, resolve it with a summary → the employee sees it resolved, with the summary, on their own page → someone else's ticket looks missing. Also fits a phone. |
 | `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
 | `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, an engineer landing on their own workspace (and never calling the tickets API), and the phone layout |
 | `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Also: employees can't open the admin pages, and the admin pages fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
@@ -428,6 +429,33 @@ curl -X POST http://localhost:8000/api/core/engineer/tickets/1/notes -H "Authori
 # Closed ticket: 409. Blank or over 2000 characters: 422. Not yours: 404.
 ```
 
+Change a ticket's status. Engineers move their tickets along the workflow; closing is for admins:
+
+```
+open --start--> in_progress --resolve--> resolved
+                  |    ^                    |
+           block  |    | unblock            | reopen
+                  v    |                    v
+                 blocked                in_progress
+```
+
+Blocking needs a reason (why the work is paused) and resolving needs a summary (what was done). Both are shown to the employee in the status history, and the blocked reason also appears next to "Blocked". Other moves take an optional `reason`. The status, `blocked_reason` (set while blocked, cleared after), `resolved_at` (set on resolve, cleared on reopen) and the history row are written together. Returns the updated ticket.
+
+```sh
+curl -X POST http://localhost:8000/api/core/engineer/tickets/1/status -H "Authorization: Bearer $ENGINEER_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"status":"blocked","reason":"Waiting on a replacement ballast"}'
+# 200 {"ticket_id":1,...,"status":"blocked","blocked_reason":"Waiting on a replacement ballast","resolved_at":null,...}
+```
+
+| Problem | Status and `detail` |
+|---|---|
+| A move the workflow doesn't allow | 409, e.g. `Open tickets can't be resolved. Start work first.` / `Blocked tickets can't be resolved. Unblock it first.` / `Resolved tickets can't be blocked. Reopen it first.` |
+| Already in that status | 409 `This ticket is already blocked` |
+| The ticket is closed | 409 `Closed tickets can't change status` |
+| Blocking or resolving without a reason | 422 `A reason is required to mark a ticket blocked` |
+| `status` other than `in_progress`, `blocked`, `resolved` (e.g. `closed`), or a reason over 500 characters | 422 |
+| Not yours, or doesn't exist | 404 `Ticket not found` |
+
 CORS allows the frontend origin:
 
 ```sh
@@ -475,7 +503,7 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- The employee side is built; the staff side is in progress. Facility admins have a dashboard (`/admin`: the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket (notes are read-only for them), and a People page (`/admin/people`) to move people between employee and engineer. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers have My queue (`/engineer`: the current or next ticket, counts, and their tickets with search and filters) and a details page (`/engineer/tickets/:id`) where they can add notes. They can't change a ticket's status yet. The endpoints for changing status, blocking and closing don't exist yet, and tests stand in for them with SQL. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts are only set up in SQL: set their `role_id` in the `users` table to the `admin` row in `roles`.
-- Status history is only written when a ticket is created, since nothing else changes status yet. The engineer and admin endpoints must call `ticket_repository.insert_status_change` in the same transaction as every status update, or the history will miss that step.
+- The employee side is built; the staff side is in progress. Facility admins have a dashboard (`/admin`: the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket (notes are read-only for them), and a People page (`/admin/people`) to move people between employee and engineer. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers have My queue (`/engineer`: the current or next ticket, counts, and their tickets with search and filters) and a details page (`/engineer/tickets/:id`) where they can add notes and move the ticket along: start, block (with a reason), unblock, resolve (with a summary) and reopen. Only the moves the workflow allows are offered, and "Up next" can be started from the dashboard. Closing isn't built yet (admins, A4), and tests stand in for it with SQL. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts are only set up in SQL: set their `role_id` in the `users` table to the `admin` row in `roles`.
+- Status history is written when a ticket is created and on every engineer status change. Any new endpoint that changes status (admins closing, in A4) must call `ticket_repository.set_status` and `insert_status_change` in the same transaction, or the history will miss that step.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

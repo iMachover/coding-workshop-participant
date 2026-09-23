@@ -13,7 +13,7 @@ import ErrorState from '../components/ErrorState'
 import StaffTicketList from '../components/tickets/StaffTicketList'
 import useApiData from '../hooks/useApiData'
 import useDebouncedValue from '../hooks/useDebouncedValue'
-import { listMyQueue } from '../services/engineerTicketService'
+import { changeTicketStatus, listMyQueue } from '../services/engineerTicketService'
 import { listBuildings } from '../services/locationService'
 import { countQueue, pickCurrentTicket } from '../utils/engineerQueue'
 
@@ -44,6 +44,13 @@ function EngineerDashboardPage() {
     key === 'q' ? filters.q.trim() !== '' : filters[key] !== DEFAULT_FILTERS[key],
   )
 
+  // Starting the "Up next" ticket makes it the current one and changes the counts and list.
+  const startWork = async (ticket) => {
+    await changeTicketStatus(ticket.ticket_id, 'in_progress')
+    summary.reload()
+    list.reload()
+  }
+
   let summaryContent
   if (summary.error) {
     summaryContent = <ErrorState message={summary.error.message} onRetry={summary.reload} />
@@ -57,7 +64,7 @@ function EngineerDashboardPage() {
   } else {
     summaryContent = (
       <>
-        <CurrentTicketCard pick={pickCurrentTicket(summary.data)} />
+        <CurrentTicketCard pick={pickCurrentTicket(summary.data)} onStart={startWork} />
         <QueueTiles counts={countQueue(summary.data)} />
       </>
     )

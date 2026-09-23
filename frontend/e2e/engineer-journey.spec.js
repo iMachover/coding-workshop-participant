@@ -47,11 +47,11 @@ async function seedQueue(request) {
 }
 
 /**
- * E1 through the UI: sign in -> the queue's "Up next", counts and list -> search and
- * filter -> open a ticket, read it, add a note the employee sees -> someone else's ticket
- * looks missing.
+ * E1 and E2 through the UI: sign in -> the queue's "Up next", counts and list -> search and
+ * filter -> start the up-next ticket -> read it, add a note -> block, unblock and resolve
+ * it, which the employee sees on their own page -> someone else's ticket looks missing.
  */
-test('an engineer works through their queue', async ({ page, request }) => {
+test('an engineer works through their queue', async ({ page, browser, request }) => {
   const { stamp, employee, engineer, lights, heater, printer, others } = await seedQueue(request)
 
   await test.step('sign in and land on My queue', async () => {
@@ -82,18 +82,22 @@ test('an engineer works through their queue', async ({ page, request }) => {
     await expect(titles()).toHaveText([printer.title])
   })
 
-  await test.step('once one is in progress, it becomes the current ticket', async () => {
-    // Stand-in for E2's "Start work": no API changes status yet.
-    sql(`UPDATE tickets SET status = 'in_progress', updated_at = now() WHERE ticket_id = ${Number(heater.ticket_id)}`)
-    await page.reload()
+  await test.step('start the up-next ticket, which becomes the current one', async () => {
+    await page.getByRole('region', { name: 'Up next' }).getByRole('button', { name: 'Start work' }).click()
     const card = page.getByRole('region', { name: 'Current ticket' })
-    await expect(card).toContainText(`#${heater.ticket_id} ${heater.title}`)
+    await expect(card).toContainText(`#${lights.ticket_id} ${lights.title}`)
+    await expect(page.getByRole('list', { name: 'My queue in numbers' }).getByRole('listitem')).toHaveText([
+      'Open2',
+      'In Progress1',
+      'Blocked0',
+      'P1 to finish2',
+    ])
     await card.getByRole('link', { name: 'Open ticket' }).click()
   })
 
   await test.step('the ticket shows priority and how to reach the requester', async () => {
-    await expect(page).toHaveURL(new RegExp(`/engineer/tickets/${heater.ticket_id}$`))
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(`#${heater.ticket_id} ${heater.title}`)
+    await expect(page).toHaveURL(new RegExp(`/engineer/tickets/${lights.ticket_id}$`))
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(`#${lights.ticket_id} ${lights.title}`)
     await expect(page.getByLabel('Priority P1: Building-wide')).toBeVisible()
     const requester = page.getByRole('region', { name: 'Requester' })
     await expect(requester.getByRole('link', { name: employee.email })).toHaveAttribute('href', `mailto:${employee.email}`)
@@ -107,7 +111,7 @@ test('an engineer works through their queue', async ({ page, request }) => {
     await expect(notes.getByRole('listitem').filter({ hasText: 'Bleeding the radiator' })).toContainText('You · Engineer')
     await expect(notes.getByRole('textbox', { name: 'Add a note' })).toHaveValue('')
 
-    const response = await request.get(`/api/core/tickets/${heater.ticket_id}/notes`, {
+    const response = await request.get(`/api/core/tickets/${lights.ticket_id}/notes`, {
       headers: await signInViaApi(request, employee.email),
     })
     const [note] = await response.json()
@@ -116,6 +120,50 @@ test('an engineer works through their queue', async ({ page, request }) => {
       'engineer',
       'Bleeding the radiator this afternoon.',
     ])
+  })
+
+  const controls = page.getByRole('region', { name: 'Change status' })
+  const workflow = page.getByRole('list', { name: 'Ticket workflow' })
+
+  await test.step('block it with a reason, then unblock it', async () => {
+    await controls.getByRole('button', { name: 'Mark blocked…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Mark as blocked' })
+    await dialog.getByRole('textbox', { name: /Why is the work paused/ }).fill('Waiting on a replacement ballast')
+    await dialog.getByRole('button', { name: 'Mark as blocked' }).click()
+
+    await expect(controls).toContainText('Status changed to Blocked.')
+    await expect(page.getByRole('region', { name: 'Progress' })).toContainText('Blocked: Waiting on a replacement ballast')
+    await controls.getByRole('button', { name: 'Unblock' }).click()
+    await expect(controls).toContainText('Status changed to In Progress.')
+    await expect(workflow).toContainText('In Progress (current status)')
+    await expect(page.getByRole('region', { name: 'Progress' })).not.toContainText('Blocked: Waiting')
+  })
+
+  await test.step('resolve it with a summary of what was done', async () => {
+    await controls.getByRole('button', { name: 'Mark resolved…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Mark as resolved' })
+    await dialog.getByRole('textbox', { name: /What did you do/ }).fill('Replaced the ballast; all lobby lights on')
+    await dialog.getByRole('button', { name: 'Mark as resolved' }).click()
+
+    await expect(controls).toContainText('Waiting for an admin to close it.')
+    await expect(workflow).toContainText('Resolved (current status)')
+    await expect(controls.getByRole('button', { name: 'Reopen' })).toBeVisible()
+    await expect(controls.getByRole('button', { name: 'Mark resolved…' })).toHaveCount(0)
+    const history = page.getByRole('region', { name: 'Status history' })
+    await expect(history).toContainText('Replaced the ballast; all lobby lights on')
+    await expect(history).toContainText('Waiting on a replacement ballast')
+  })
+
+  await test.step('the employee sees it resolved, with the engineer\'s summary', async () => {
+    const employeePage = await (await browser.newContext()).newPage()
+    await signIn(employeePage, employee.email)
+    await employeePage.goto(`/tickets/${lights.ticket_id}`)
+    await expect(employeePage.getByRole('list', { name: 'Ticket workflow' })).toContainText('Resolved (current status)')
+    const history = employeePage.getByRole('region', { name: 'Status history' })
+    await expect(history).toContainText('Replaced the ballast; all lobby lights on')
+    await expect(history).toContainText(engineer.full_name)
+    await expect(employeePage.locator('body')).not.toContainText(/\bP[123]\b/)
+    await employeePage.context().close()
   })
 
   await test.step('someone else\'s ticket looks missing', async () => {

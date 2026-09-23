@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,6 +6,7 @@ import App from '../App'
 import { ApiError } from '../services/apiClient'
 import {
   addAssignedTicketNote,
+  changeTicketStatus,
   getAssignedTicket,
   listAssignedTicketHistory,
   listAssignedTicketNotes,
@@ -20,6 +21,7 @@ vi.mock('../services/engineerTicketService', () => ({
   listAssignedTicketHistory: vi.fn(),
   listAssignedTicketNotes: vi.fn(),
   addAssignedTicketNote: vi.fn(),
+  changeTicketStatus: vi.fn(),
   listMyQueue: vi.fn(),
 }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
@@ -60,6 +62,7 @@ beforeEach(() => {
   vi.mocked(listAssignedTicketHistory).mockReset().mockResolvedValue(HISTORY)
   vi.mocked(listAssignedTicketNotes).mockReset().mockResolvedValue(NOTES)
   vi.mocked(addAssignedTicketNote).mockReset()
+  vi.mocked(changeTicketStatus).mockReset()
   vi.mocked(listMyQueue).mockReset().mockResolvedValue(QUEUE)
   vi.mocked(listBuildings).mockReset().mockResolvedValue([])
 })
@@ -171,5 +174,133 @@ describe('EngineerTicketDetailsPage: notes', () => {
     await heading()
     expect(within(panel('Notes')).getByText("This ticket is closed, so new notes can't be added.")).toBeInTheDocument()
     expect(within(panel('Notes')).queryByRole('textbox')).not.toBeInTheDocument()
+  })
+})
+
+describe('EngineerTicketDetailsPage: changing status', () => {
+  const controls = () => screen.getByRole('region', { name: 'Change status' })
+  const buttons = () => within(controls()).getAllByRole('button').map((b) => b.textContent)
+  const renderWith = (status, extra = {}) => {
+    vi.mocked(getAssignedTicket).mockResolvedValue({ ...TICKET, status, ...extra })
+    return renderPage()
+  }
+
+  it.each([
+    ['open', ['Start work']],
+    ['in_progress', ['Mark resolved…', 'Mark blocked…']],
+    ['blocked', ['Unblock']],
+    ['resolved', ['Reopen']],
+  ])('offers only the allowed moves when %s', async (status, expected) => {
+    renderWith(status)
+    await heading()
+    expect(buttons()).toEqual(expected)
+  })
+
+  it('explains a resolved ticket waits for an admin', async () => {
+    renderWith('resolved')
+    await heading()
+    expect(controls()).toHaveTextContent('Waiting for an admin to close it. Reopen it if the problem is back.')
+  })
+
+  it('says a closed ticket can\'t change', async () => {
+    renderWith('closed')
+    await heading()
+    expect(controls()).toHaveTextContent("This ticket is closed, so its status can't change.")
+    expect(within(controls()).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('starts work in one click and refreshes the ticket and history', async () => {
+    vi.mocked(changeTicketStatus).mockResolvedValue({ ...TICKET, status: 'in_progress' })
+    const user = renderWith('open')
+    await heading()
+    vi.mocked(getAssignedTicket).mockResolvedValue({ ...TICKET, status: 'in_progress' })
+
+    await user.click(within(controls()).getByRole('button', { name: 'Start work' }))
+
+    expect(changeTicketStatus).toHaveBeenCalledWith(9, 'in_progress', undefined)
+    expect(await within(controls()).findByText('Status changed to In Progress.')).toBeInTheDocument()
+    expect(within(controls()).getByRole('button', { name: 'Mark resolved…' })).toBeInTheDocument()
+    expect(getAssignedTicket).toHaveBeenCalledTimes(2)
+    expect(listAssignedTicketHistory).toHaveBeenCalledTimes(2)
+
+    await user.click(within(controls()).getByRole('button', { name: 'Close' }))
+    expect(within(controls()).queryByText(/Status changed/)).not.toBeInTheDocument()
+  })
+
+  it('asks why before blocking', async () => {
+    vi.mocked(changeTicketStatus).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
+    const user = renderWith('in_progress')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Mark blocked…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Mark as blocked' })
+    expect(dialog).toHaveTextContent('The employee sees this next to "Blocked".')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as blocked' }))
+    expect(within(dialog).getByText('Write a reason first.')).toBeInTheDocument()
+    expect(changeTicketStatus).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByRole('textbox', { name: /Why is the work paused\?/ }), '  Waiting on parts ')
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as blocked' }))
+
+    expect(changeTicketStatus).toHaveBeenCalledWith(9, 'blocked', 'Waiting on parts')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await within(controls()).findByText('Status changed to Blocked.')).toBeInTheDocument()
+  })
+
+  it('asks what was done before resolving, and limits the length', async () => {
+    const user = renderWith('in_progress')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Mark as resolved' })
+    const box = within(dialog).getByRole('textbox', { name: /What did you do\?/ })
+    await user.click(box)
+    await user.paste('x'.repeat(501))
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as resolved' }))
+
+    expect(within(dialog).getByText('Use 500 characters or fewer.')).toBeInTheDocument()
+    expect(changeTicketStatus).not.toHaveBeenCalled()
+  })
+
+  it('keeps the dialog open with the API\'s reason when a move is refused, and cancels cleanly', async () => {
+    vi.mocked(changeTicketStatus).mockRejectedValue(
+      new ApiError('Blocked tickets can\'t be resolved. Unblock it first.', { status: 409 }),
+    )
+    const user = renderWith('in_progress')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved…' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'Fixed')
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as resolved' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent("Blocked tickets can't be resolved. Unblock it first.")
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(within(controls()).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows a refused one-click move under the buttons, never a raw error', async () => {
+    vi.mocked(changeTicketStatus).mockRejectedValue(new TypeError('boom'))
+    const user = renderWith('blocked')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Unblock' }))
+
+    expect(await within(controls()).findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.')
+  })
+
+  it('disables the buttons while saving', async () => {
+    let finish
+    vi.mocked(changeTicketStatus).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const user = renderWith('resolved')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Reopen' }))
+
+    expect(within(controls()).getByRole('button', { name: 'Reopen' })).toBeDisabled()
+    finish({ ...TICKET, status: 'in_progress' })
+    expect(await within(controls()).findByText('Status changed to In Progress.')).toBeInTheDocument()
   })
 })

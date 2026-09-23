@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeStatusChange, MAIN_PATH, workflowState } from './ticketWorkflow'
+import { MAIN_PATH, describeStatusChange, engineerMoves, workflowState } from './ticketWorkflow'
 
 const states = (status) => workflowState(status).steps.map((s) => s.state)
 
@@ -46,5 +46,31 @@ describe('describeStatusChange', () => {
     ['closed', 'open', 'Reopened → Open', 'reopened'],
   ])('%s -> %s reads "%s"', (from, to, label, kind) => {
     expect(describeStatusChange({ from_status: from, to_status: to })).toEqual({ label, kind })
+  })
+})
+
+describe('engineerMoves', () => {
+  it.each([
+    ['open', ['in_progress']],
+    ['in_progress', ['resolved', 'blocked']],
+    ['blocked', ['in_progress']],
+    ['resolved', ['in_progress']],
+    ['closed', []],
+    ['someday-status', []],
+  ])('from %s: %o', (status, targets) => {
+    expect(engineerMoves(status).map((m) => m.to)).toEqual(targets)
+  })
+
+  it('names each move and asks for a reason only when blocking or resolving', () => {
+    const labels = ['open', 'in_progress', 'blocked', 'resolved'].flatMap((s) =>
+      engineerMoves(s).map((m) => [m.label, Boolean(m.reason)]),
+    )
+    expect(labels).toEqual([
+      ['Start work', false],
+      ['Mark resolved…', true],
+      ['Mark blocked…', true],
+      ['Unblock', false],
+      ['Reopen', false],
+    ])
   })
 })

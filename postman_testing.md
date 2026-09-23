@@ -13,7 +13,7 @@ Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
 - [Locations](#locations): `GET /buildings`, `GET /buildings/{id}/floors`, `GET /floors/{id}/seats`
 - [Tickets](#tickets): list, create, get, status history, notes (list/add), escalation
 - [Admin](#admin): all tickets (filters, search, triage order), ticket details, notes, status history, engineers' workload, assigning, people and roles
-- [Engineer](#engineer): my queue (filters, triage order), ticket details, status history, notes (list/add)
+- [Engineer](#engineer): my queue (filters, triage order), ticket details, status history, notes (list/add), status changes (start, block, unblock, resolve, reopen)
 - [Suggested test run](#suggested-test-run)
 
 ---
@@ -28,7 +28,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer) with **83 requests**: every route's success case plus its common errors. Each request has tests.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer) with **94 requests**: every route's success case plus its common errors. Each request has tests.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -1173,7 +1173,7 @@ The change **signs that person out**: their current token no longer matches thei
 
 ## Engineer
 
-An engineer's own queue. **Engineer-only**: employees and admins get `403 {"detail":"You don't have access to this."}`. Every route acts on the tickets **currently assigned to the caller**. Any other ticket (unassigned, someone else's, reassigned away, or missing) returns **404, not 403**, so its existence isn't revealed. Rows and details use the same shapes as the admin routes, so they include `priority` and the requester's contact details. Status changes come later.
+An engineer's own queue. **Engineer-only**: employees and admins get `403 {"detail":"You don't have access to this."}`. Every route acts on the tickets **currently assigned to the caller**. Any other ticket (unassigned, someone else's, reassigned away, or missing) returns **404, not 403**, so its existence isn't revealed. Rows and details use the same shapes as the admin routes, so they include `priority` and the requester's contact details. Engineers [move their tickets through the workflow](#change-a-tickets-status-engineer); closing is for admins.
 
 In the collection, the Engineer folder's Authorization tab is `Bearer {{engineerAccessToken}}`, saved by **Login - engineer**. Its first two requests use the admin token to set up the engineer (see [Setup step 3](#3-create-an-admin-and-two-engineers-for-the-admin-folder)).
 
@@ -1365,6 +1365,92 @@ List every note on one of your tickets (from the employee and engineers, oldest 
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
 | 403 | Signed in as an employee or admin | `{"detail":"You don't have access to this."}` |
 
+### Change a ticket's status (engineer)
+
+| | |
+|---|---|
+| **Method** | `POST` |
+| **URL** | `{{baseUrl}}/engineer/tickets/:ticket_id/status` |
+| **Auth** | `Authorization: Bearer {{engineerAccessToken}}` |
+| **Path params** | `ticket_id`: positive integer |
+
+The workflow engineers can move a ticket through (closing is for admins):
+
+```
+open --start--> in_progress --resolve--> resolved
+                  |    ^                    |
+           block  |    | unblock            | reopen
+                  v    |                    v
+                 blocked                in_progress
+```
+
+**Request body**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `status` | string | yes | `in_progress` (start, unblock or reopen), `blocked` or `resolved` |
+| `reason` | string | for `blocked` and `resolved` | Trimmed; 1–500 characters. Why the work is paused, or what was done. Optional for `in_progress`. |
+
+```json
+{ "status": "blocked", "reason": "Waiting on a replacement Wi-Fi card" }
+```
+
+What it changes, all in one transaction:
+
+- `status` → the new status, and `updated_at` → now.
+- `blocked_reason` → the reason while blocked, cleared on any other move.
+- `resolved_at` → now on resolve, cleared on reopen.
+- A status history row with the old and new status, the engineer, and the reason. The employee sees it in [their history](#list-status-history).
+
+**Expected response: `200 OK`.** The updated ticket, in the [Get one of my tickets (engineer)](#get-one-of-my-tickets-engineer) shape.
+
+```json
+{
+  "ticket_id": 1,
+  "title": "Lobby lights out",
+  "short_description": "Whole lobby is dark",
+  "description": "No lights in the lobby.",
+  "category": "electrical",
+  "urgency": "high",
+  "affected_scope": "building",
+  "status": "blocked",
+  "building_id": 1,
+  "floor_id": null,
+  "seat_id": null,
+  "created_by_user_id": 4,
+  "assigned_to_user_id": 2,
+  "escalation_requested": false,
+  "escalation_reason": null,
+  "blocked_reason": "Waiting on a replacement ballast",
+  "created_at": "2026-09-23T17:27:31.020128-04:00",
+  "updated_at": "2026-09-23T17:27:31.734244-04:00",
+  "acknowledged_at": "2026-09-23T17:27:31.046613-04:00",
+  "assigned_at": "2026-09-23T17:27:31.046613-04:00",
+  "resolved_at": null,
+  "building_name": "Building A",
+  "floor_number": null,
+  "seat_number": null,
+  "assigned_to_name": "Sam Tech",
+  "priority": "P1",
+  "created_by_name": "Jane Doe",
+  "created_by_email": "jane.doe@acme.inc",
+  "created_by_phone": null
+}
+```
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 409 | A move the workflow doesn't allow | `{"detail":"Open tickets can't be resolved. Start work first."}`, `"Open tickets can't be blocked. Start work first."`, `"Blocked tickets can't be resolved. Unblock it first."`, `"Resolved tickets can't be blocked. Reopen it first."` |
+| 409 | Already in that status | `{"detail":"This ticket is already blocked"}` |
+| 409 | The ticket is closed | `{"detail":"Closed tickets can't change status"}` |
+| 422 | `blocked` or `resolved` without a reason (or a blank one) | `loc: ["body"]`, `msg: "Value error, A reason is required to mark a ticket blocked"` |
+| 422 | `status` is anything else (`open`, `closed`, …), or `reason` is over 500 characters | `loc: ["body","status"]` / `["body","reason"]` |
+| 404 | Not yours, or doesn't exist | `{"detail":"Ticket not found"}` |
+| 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
+| 403 | Signed in as an employee or admin | `{"detail":"You don't have access to this."}` |
+
 ---
 
 ## Suggested test run
@@ -1418,4 +1504,11 @@ List every note on one of your tickets (from the employee and engineers, oldest 
 | 43 | `GET /engineer/tickets/{{ticketId}}` | 200, `priority` and the requester's email and phone |
 | 44 | `POST /engineer/tickets/{{ticketId}}/notes` | 201, `author_role: "engineer"` |
 | 45 | `GET /tickets/{{ticketId}}/notes` with the employee's token | 200, includes the engineer's note |
-| 46 | As the admin, reassign `{{ticketId}}` to another engineer; then `GET /engineer/tickets/{{ticketId}}` as the engineer | 200, then 404 |
+| 46 | `POST /engineer/tickets/{{ticketId}}/status` with `{"status":"resolved","reason":"Done"}` while it's open | 409 `Open tickets can't be resolved. Start work first.` |
+| 47 | Same route: `{"status":"in_progress"}`, then `{"status":"blocked"}` with no reason | 200, then 422 |
+| 48 | `{"status":"blocked","reason":"Waiting on a part"}`; then `GET /tickets/{{ticketId}}` as the employee | 200 `blocked_reason` set; the employee sees it, still no `priority` |
+| 49 | `{"status":"resolved","reason":"..."}` while blocked | 409 `Blocked tickets can't be resolved. Unblock it first.` |
+| 50 | `in_progress` (unblock), then `resolved` with a reason, then `in_progress` (reopen) | 200 ×3: `blocked_reason` cleared, `resolved_at` set, then cleared |
+| 51 | `{"status":"closed"}` | 422 (closing is for admins) |
+| 52 | `GET /engineer/tickets/{{ticketId}}/history` | Every move in order, each with its reason |
+| 53 | As the admin, reassign `{{ticketId}}` to another engineer; then `GET /engineer/tickets/{{ticketId}}` as the engineer | 200, then 404 |

@@ -346,3 +346,21 @@ class EngineerTicketFilters(BaseModel):
     # "active" is everything not closed; leave it out for every ticket they have.
     view: Literal["active", "closed"] | None = None
     q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+
+
+class StatusChangeRequest(BaseModel):
+    """An engineer moving one of their tickets. Closing is for admins; nobody sets a ticket back to open.
+
+    Blocking needs the reason the work is paused, and resolving a summary of what was done:
+    both are shown to the employee. Any other move may carry an optional reason.
+    """
+
+    status: Literal["in_progress", "blocked", "resolved"]
+    reason: Annotated[TrimmedText, StringConstraints(max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def reason_when_required(self) -> Self:
+        """Blocked and resolved tickets need a reason the employee can read."""
+        if self.status in ("blocked", "resolved") and self.reason is None:
+            raise ValueError(f"A reason is required to mark a ticket {self.status}")
+        return self

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { api } from './apiClient'
 import {
   addAssignedTicketNote,
+  changeTicketStatus,
   getAssignedTicket,
   listAssignedTicketHistory,
   listAssignedTicketNotes,
@@ -44,5 +45,19 @@ describe('engineerTicketService', () => {
     await addAssignedTicketNote('7', '  On my way.  ')
 
     expect(post).toHaveBeenCalledWith('/engineer/tickets/7/notes', { note_text: 'On my way.' })
+  })
+
+  it('changes status, sending a trimmed reason only when there is one', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ ticket_id: 7 })
+
+    await changeTicketStatus('7', 'blocked', '  Waiting on parts  ')
+    await changeTicketStatus(7, 'in_progress', '   ')
+    await changeTicketStatus(7, 'in_progress')
+
+    expect(post.mock.calls).toEqual([
+      ['/engineer/tickets/7/status', { status: 'blocked', reason: 'Waiting on parts' }],
+      ['/engineer/tickets/7/status', { status: 'in_progress' }],
+      ['/engineer/tickets/7/status', { status: 'in_progress' }],
+    ])
   })
 })

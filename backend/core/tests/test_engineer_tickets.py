@@ -5,18 +5,6 @@ import pytest
 from tests.conftest import bearer
 
 
-@pytest.fixture
-def sam(engineers) -> dict[str, str]:
-    """Headers for the engineer Sam Tech."""
-    return bearer({"user_id": engineers["sam"], "role": "engineer"})
-
-
-@pytest.fixture
-def kim(engineers) -> dict[str, str]:
-    """Headers for the engineer Kim Fixit."""
-    return bearer({"user_id": engineers["kim"], "role": "engineer"})
-
-
 def _assign(run_sql, ticket_id, engineer_id, status="open") -> None:
     run_sql(
         "UPDATE tickets SET assigned_to_user_id = %s, status = %s WHERE ticket_id = %s",

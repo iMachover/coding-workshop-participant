@@ -3059,7 +3059,7 @@
     },
     {
       "name": "Engineer",
-      "description": "An engineer's own queue (`/engineer/...`). Sets itself up with the admin token: promotes the collection's second user to engineer and assigns them the ticket, then signs them in. Needs `adminEmail` and `adminPassword` like the Admin folder.",
+      "description": "An engineer's own queue (`/engineer/...`). Sets itself up with the admin token: promotes the collection's second user to engineer and assigns them the ticket, then signs them in and takes the ticket through the workflow. Needs `adminEmail` and `adminPassword` like the Admin folder.",
       "auth": {
         "type": "bearer",
         "bearer": [
@@ -3691,6 +3691,519 @@
                 "exec": [
                   "pm.test('Status is 403', () => pm.response.to.have.status(403));",
                   "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"You don't have access to this.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - resolve an open ticket (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "The workflow is open → in progress → resolved; resolving has to wait until work has started.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"reason\": \"Done\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Explains what to do first', () => pm.expect(pm.response.json().detail).to.eql(\"Open tickets can't be resolved. Start work first.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - start work",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "open → in_progress. A reason is optional here.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Now in_progress', () => pm.expect(ticket.status).to.eql('in_progress'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - block without a reason (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "Blocking and resolving need a reason the employee can read.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"blocked\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Says a reason is needed', () => pm.expect(pm.response.json().detail[0].msg).to.include('A reason is required to mark a ticket blocked'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - block",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "in_progress → blocked. The reason is stored as blocked_reason and on the history row.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"blocked\",\n  \"reason\": \"Waiting on a replacement Wi-Fi card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Now blocked', () => pm.expect(ticket.status).to.eql('blocked'));",
+                  "pm.test('Keeps the reason', () => pm.expect(ticket.blocked_reason).to.eql('Waiting on a replacement Wi-Fi card'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - the employee sees the blocked reason",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": "Uses the employee's `{{accessToken}}` on the employee route.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Blocked, with the reason', () => {",
+                  "  pm.expect(ticket.status).to.eql('blocked');",
+                  "  pm.expect(ticket.blocked_reason).to.eql('Waiting on a replacement Wi-Fi card');",
+                  "});",
+                  "pm.test('Still no priority for the employee', () => pm.expect(ticket).to.not.have.property('priority'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - resolve while blocked (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"reason\": \"Done\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Explains what to do first', () => pm.expect(pm.response.json().detail).to.eql(\"Blocked tickets can't be resolved. Unblock it first.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - unblock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "blocked → in_progress.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"reason\": \"The card arrived\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Now in_progress', () => pm.expect(ticket.status).to.eql('in_progress'));",
+                  "pm.test('Blocked reason cleared', () => pm.expect(ticket.blocked_reason).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - resolve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "in_progress → resolved. The summary of what was done is required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"reason\": \"Replaced the Wi-Fi card; stable for an hour\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Now resolved', () => pm.expect(ticket.status).to.eql('resolved'));",
+                  "pm.test('Stamps resolved_at', () => pm.expect(ticket.resolved_at).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - reopen",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "resolved → in_progress, until an admin closes it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"reason\": \"Dropping again after lunch\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const ticket = pm.response.json();",
+                  "pm.test('Now in_progress', () => pm.expect(ticket.status).to.eql('in_progress'));",
+                  "pm.test('resolved_at cleared', () => pm.expect(ticket.resolved_at).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status - close (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "description": "Closing is for admins; engineers can only move to in_progress, blocked or resolved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\",\n  \"reason\": \"Done\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Points at status', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'status']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status history (engineer) - the whole workflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engineer/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "engineer",
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const history = pm.response.json();",
+                  "pm.test('Every move, in order, with its reason', () => {",
+                  "  const moves = history.slice(-5).map((h) => `${h.from_status}->${h.to_status}`);",
+                  "  pm.expect(moves).to.eql(['open->in_progress', 'in_progress->blocked', 'blocked->in_progress', 'in_progress->resolved', 'resolved->in_progress']);",
+                  "  pm.expect(history[history.length - 4].reason).to.eql('Waiting on a replacement Wi-Fi card');",
+                  "  pm.expect(history.slice(-5).every((h) => h.changed_by_role === 'engineer')).to.be.true;",
+                  "});"
                 ]
               }
             }

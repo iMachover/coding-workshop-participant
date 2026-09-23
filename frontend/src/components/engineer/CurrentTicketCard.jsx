@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import PropTypes from 'prop-types'
+import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
+import CircularProgress from '@mui/material/CircularProgress'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Link as RouterLink } from 'react-router'
 
+import { ApiError } from '../../services/apiClient'
 import { formatAge, formatLocation, PRIORITIES, STATUSES } from '../../utils/ticketFormat'
 import EscalatedChip from '../tickets/EscalatedChip'
 import PriorityChip from '../tickets/PriorityChip'
@@ -21,9 +25,13 @@ function updatedPhrase(iso) {
 
 /**
  * The engineer's focus: the ticket they're working on, or the one to pick up next (see
- * pickCurrentTicket). With nothing to work on, it says so.
+ * pickCurrentTicket), which they can start right here. With nothing to work on, it says so.
+ * `onStart(ticket)` starts work on it and resolves once the dashboard has the change.
  */
-function CurrentTicketCard({ pick }) {
+function CurrentTicketCard({ pick, onStart }) {
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState('')
+
   if (!pick) {
     return (
       <Card component="section" aria-labelledby="current-title">
@@ -40,6 +48,18 @@ function CurrentTicketCard({ pick }) {
   }
 
   const { ticket: t, kind } = pick
+  const handleStart = async () => {
+    setStarting(true)
+    setError('')
+    try {
+      await onStart(t)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
+    } finally {
+      setStarting(false)
+    }
+  }
+
   return (
     <Card component="section" aria-labelledby="current-title" sx={{ borderLeft: 4, borderLeftColor: 'primary.main' }}>
       <CardContent>
@@ -60,9 +80,30 @@ function CurrentTicketCard({ pick }) {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {updatedPhrase(t.updated_at)}
         </Typography>
-        <Button variant="contained" component={RouterLink} to={`/engineer/tickets/${t.ticket_id}`}>
-          Open ticket
-        </Button>
+        <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+          {kind === 'next' && (
+            <Button
+              variant="contained"
+              onClick={handleStart}
+              disabled={starting}
+              startIcon={starting ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+              {starting ? 'Starting…' : 'Start work'}
+            </Button>
+          )}
+          <Button
+            variant={kind === 'next' ? 'outlined' : 'contained'}
+            component={RouterLink}
+            to={`/engineer/tickets/${t.ticket_id}`}
+          >
+            Open ticket
+          </Button>
+        </Stack>
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
       </CardContent>
     </Card>
   )
@@ -82,6 +123,7 @@ CurrentTicketCard.propTypes = {
       updated_at: PropTypes.string.isRequired,
     }).isRequired,
   }),
+  onStart: PropTypes.func.isRequired,
 }
 
 export default CurrentTicketCard

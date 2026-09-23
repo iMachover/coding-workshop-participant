@@ -39,3 +39,17 @@ export function listAssignedTicketNotes({ ticketId }, { signal } = {}) {
 export function addAssignedTicketNote(ticketId, noteText) {
   return api.post(`/engineer/tickets/${Number(ticketId)}/notes`, { note_text: noteText.trim() })
 }
+
+/**
+ * Move one of the caller's tickets along the workflow. Resolves with the updated ticket.
+ * A blank reason is left out (it's required for blocked and resolved; the API says so
+ * with a 422). Rejects with 409 for a move the workflow doesn't allow.
+ * @param {number|string} ticketId
+ * @param {'in_progress'|'blocked'|'resolved'} status
+ * @param {string} [reason]
+ */
+export function changeTicketStatus(ticketId, status, reason = '') {
+  const body = { status }
+  if (reason.trim()) body.reason = reason.trim()
+  return api.post(`/engineer/tickets/${Number(ticketId)}/status`, body)
+}

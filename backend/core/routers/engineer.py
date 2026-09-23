@@ -11,6 +11,7 @@ from schemas import (
     EngineerTicketFilters,
     NoteCreate,
     NoteResponse,
+    StatusChangeRequest,
     StatusChangeResponse,
 )
 from services import engineer_ticket_service
@@ -50,3 +51,13 @@ def list_notes(ticket_id: IdPath, user: EngineerUser) -> list[dict[str, Any]]:
 def add_note(ticket_id: IdPath, body: NoteCreate, user: EngineerUser) -> dict[str, Any]:
     """Add a note to one of the caller's tickets. Closed tickets return 409."""
     return engineer_ticket_service.add_note(user["user_id"], ticket_id, body.note_text)
+
+
+@router.post("/tickets/{ticket_id}/status", response_model=AdminTicketDetail)
+def change_status(ticket_id: IdPath, body: StatusChangeRequest, user: EngineerUser) -> dict[str, Any]:
+    """Start, block, unblock, resolve or reopen one of the caller's tickets. Returns the ticket.
+
+    Moves the workflow doesn't allow (e.g. resolving an open ticket) return 409; blocking
+    or resolving without a reason returns 422.
+    """
+    return engineer_ticket_service.change_status(user["user_id"], ticket_id, body.status, body.reason)
