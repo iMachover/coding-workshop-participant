@@ -6,6 +6,9 @@ from fastapi import APIRouter, Query, status
 
 from deps import CurrentUser, IdPath
 from schemas import (
+    EscalationRequest,
+    NoteCreate,
+    NoteResponse,
     TicketCreate,
     TicketDetail,
     TicketFilters,
@@ -35,3 +38,25 @@ def create_ticket(body: TicketCreate, user: CurrentUser) -> dict[str, Any]:
 def get_my_ticket(ticket_id: IdPath, user: CurrentUser) -> dict[str, Any]:
     """Full details of one of the caller's tickets. Others' tickets return 404."""
     return ticket_service.get_my_ticket(user["user_id"], ticket_id)
+
+
+@router.get("/{ticket_id}/notes", response_model=list[NoteResponse])
+def list_notes(ticket_id: IdPath, user: CurrentUser) -> list[dict[str, Any]]:
+    """The ticket's note history, oldest first."""
+    return ticket_service.list_notes(user["user_id"], ticket_id)
+
+
+@router.post(
+    "/{ticket_id}/notes", status_code=status.HTTP_201_CREATED, response_model=NoteResponse
+)
+def add_note(ticket_id: IdPath, body: NoteCreate, user: CurrentUser) -> dict[str, Any]:
+    """Add a note to one of the caller's tickets. Closed tickets return 409."""
+    return ticket_service.add_note(user["user_id"], ticket_id, body.note_text)
+
+
+@router.post("/{ticket_id}/escalation", response_model=TicketDetail)
+def request_escalation(
+    ticket_id: IdPath, body: EscalationRequest, user: CurrentUser
+) -> dict[str, Any]:
+    """Ask a Facility Admin to review the ticket. Returns the updated ticket."""
+    return ticket_service.request_escalation(user["user_id"], ticket_id, body.reason)

@@ -82,6 +82,63 @@ def get_detail(conn: psycopg.Connection, ticket_id: int) -> dict[str, Any] | Non
     ).fetchone()
 
 
+def lock(conn: psycopg.Connection, ticket_id: int) -> None:
+    """Lock a ticket row until the transaction ends, so its status can't change mid-update."""
+    conn.execute("SELECT 1 FROM tickets WHERE ticket_id = %s FOR UPDATE", (ticket_id,))
+
+
+def touch(conn: psycopg.Connection, ticket_id: int) -> None:
+    """Set a ticket's updated_at to now."""
+    conn.execute("UPDATE tickets SET updated_at = now() WHERE ticket_id = %s", (ticket_id,))
+
+
+def request_escalation(conn: psycopg.Connection, ticket_id: int, reason: str) -> None:
+    """Flag a ticket for admin review with the employee's reason."""
+    conn.execute(
+        """
+        UPDATE tickets
+        SET escalation_requested = true, escalation_reason = %s, updated_at = now()
+        WHERE ticket_id = %s
+        """,
+        (reason, ticket_id),
+    )
+
+
+def list_notes(conn: psycopg.Connection, ticket_id: int) -> list[dict[str, Any]]:
+    """Return a ticket's notes with author names, oldest first."""
+    return conn.execute(
+        """
+        SELECT n.note_id, n.ticket_id, n.user_id, u.full_name AS author_name,
+               u.role AS author_role, n.note_text, n.created_at
+        FROM ticket_notes n
+        JOIN users u ON u.user_id = n.user_id
+        WHERE n.ticket_id = %s
+        ORDER BY n.created_at, n.note_id
+        """,
+        (ticket_id,),
+    ).fetchall()
+
+
+def insert_note(
+    conn: psycopg.Connection, ticket_id: int, user_id: int, note_text: str
+) -> dict[str, Any]:
+    """Insert a note and return it with the author's name and role."""
+    return conn.execute(
+        """
+        WITH n AS (
+            INSERT INTO ticket_notes (ticket_id, user_id, note_text)
+            VALUES (%s, %s, %s)
+            RETURNING note_id, ticket_id, user_id, note_text, created_at
+        )
+        SELECT n.note_id, n.ticket_id, n.user_id, u.full_name AS author_name,
+               u.role AS author_role, n.note_text, n.created_at
+        FROM n
+        JOIN users u ON u.user_id = n.user_id
+        """,
+        (ticket_id, user_id, note_text),
+    ).fetchone()
+
+
 def insert(
     conn: psycopg.Connection,
     *,

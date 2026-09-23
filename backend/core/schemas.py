@@ -181,6 +181,30 @@ class TicketResponse(BaseModel):
     resolved_at: datetime | None
 
 
+class NoteCreate(BaseModel):
+    """A note added to a ticket's history."""
+
+    note_text: Annotated[TrimmedText, StringConstraints(max_length=2000)]
+
+
+class NoteResponse(BaseModel):
+    """A note with its author, so the history can show who wrote what."""
+
+    note_id: int
+    ticket_id: int
+    user_id: int
+    author_name: str
+    author_role: Role
+    note_text: str
+    created_at: datetime
+
+
+class EscalationRequest(BaseModel):
+    """Why the employee thinks the ticket needs more attention."""
+
+    reason: Annotated[TrimmedText, StringConstraints(max_length=1000)]
+
+
 class TicketDetail(TicketResponse):
     """A full ticket plus the names a details page shows."""
 

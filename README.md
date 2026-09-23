@@ -156,6 +156,25 @@ curl http://localhost:8000/api/core/tickets/1 -H 'X-User-Id: 1'
 # Someone else's ticket, or one that doesn't exist: 404 {"detail":"Ticket not found"}
 ```
 
+Notes. Adding one also moves the ticket's `updated_at` forward, so it rises to the top of the list.
+
+```sh
+curl http://localhost:8000/api/core/tickets/1/notes -H 'X-User-Id: 1'
+# 200 [{"note_id":2,"author_name":"Sam Tech","author_role":"engineer","note_text":"...",...},...] oldest first
+curl -X POST http://localhost:8000/api/core/tickets/1/notes -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+  -d '{"note_text":"Thanks, I will be at my desk after 2pm."}'
+# 201 {"note_id":3,...}. Closed ticket: 409. Blank note: 422. Not your ticket: 404.
+```
+
+Request escalation. It flags the ticket for Facility Admin review and returns the updated ticket.
+
+```sh
+curl -X POST http://localhost:8000/api/core/tickets/5/escalation -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+  -d '{"reason":"Whole floor can not print payroll docs, due today."}'
+# 200 {"ticket_id":5,...,"escalation_requested":true,"escalation_reason":"Whole floor can not print..."}
+# Already escalated or closed: 409. Blank reason: 422. Not your ticket: 404.
+```
+
 CORS allows the frontend origin:
 
 ```sh
