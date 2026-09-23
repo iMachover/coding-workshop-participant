@@ -60,6 +60,36 @@ VITE_API_URL=http://localhost:8000
 
 ## Testing
 
+### Running the tests
+
+The pytest suite runs against its own database, `codingworkshop_test`, so your dev data is never touched. Create it once:
+
+```sh
+psql -d postgres -c "CREATE DATABASE codingworkshop_test OWNER test;"
+```
+
+Then run the suite from `backend/core`, with or without coverage:
+
+```sh
+cd backend/core
+../.venv/bin/pytest
+../.venv/bin/pytest --cov --cov-report=term-missing
+```
+
+Each run rebuilds the test schema from `sql/`, and every test starts with no users, tickets or notes. The suite refuses to run against a database whose name doesn't end in `_test`. To use a different test database, set `TEST_POSTGRES_NAME`.
+
+| File | Covers |
+|---|---|
+| `test_security.py`, `test_schemas.py` | Password hashing and request validation (no DB) |
+| `test_db.py` | Commit, rollback, connection reuse and reconnecting after a dropped connection |
+| `test_health_and_errors.py` | Health checks, domain errors → 400/401/404/409, generic JSON 500 |
+| `test_auth.py`, `test_locations.py` | Register, login, `X-User-Id`, location lookups |
+| `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
+
+CI runs `bandit -r ./backend`. `backend/.bandit` skips `tests/` folders there, since tests use `assert` and fake passwords on purpose.
+
+### Manual checks with curl
+
 With the backend running, run these in another terminal.
 
 Health check:

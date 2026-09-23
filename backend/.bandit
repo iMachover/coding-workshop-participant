@@ -1,0 +1,4 @@
+[bandit]
+# Auto-discovered by CI's `bandit -r ./backend`. Tests use assert and fake passwords
+# on purpose, so test folders are skipped; all application code is still scanned.
+exclude = */tests/*
