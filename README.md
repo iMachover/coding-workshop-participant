@@ -113,6 +113,49 @@ curl http://localhost:8000/api/core/floors/3/seats -H 'X-User-Id: 1'
 # Unknown building or floor: 404. Non-numeric id: 422.
 ```
 
+Create a ticket. The server sets `status` to `open`, the creator from `X-User-Id`, and `priority` from `affected_scope` (building → P1, floor → P2, me → P3).
+
+```sh
+curl -X POST http://localhost:8000/api/core/tickets -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+  -d '{"title":"Wi-Fi keeps dropping","short_description":"Disconnects every few minutes",
+       "description":"Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
+       "category":"network","urgency":"medium","affected_scope":"me",
+       "building_id":1,"floor_id":3,"seat_id":3}'
+# 201 {"ticket_id":1,...,"priority":"P3","status":"open",...}
+```
+
+| Problem | Status |
+|---|---|
+| `affected_scope` is `floor` without `floor_id`, or `me` without `seat_id`, or `seat_id` without `floor_id` | 422 |
+| Unknown category/urgency/scope, blank title | 422 |
+| Floor not in the building, seat not on the floor, unknown building/floor/seat | 400 |
+
+List my tickets, most recently updated first. Only the caller's own tickets are returned, with building name and floor/seat numbers filled in.
+
+```sh
+curl 'http://localhost:8000/api/core/tickets' -H 'X-User-Id: 1'
+curl 'http://localhost:8000/api/core/tickets?view=active&urgency=high' -H 'X-User-Id: 1'
+curl 'http://localhost:8000/api/core/tickets?q=printer' -H 'X-User-Id: 1'
+```
+
+| Query param | Values |
+|---|---|
+| `view` | `active` (everything not closed) or `closed` |
+| `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
+| `urgency` | `low`, `medium`, `high` |
+| `priority` | `P1`, `P2`, `P3` |
+| `q` | Case-insensitive text in title or short description, or an exact ticket id |
+
+Filters combine with AND. An unknown value returns 422.
+
+Ticket details: the full ticket plus `building_name`, `floor_number`, `seat_number` and `assigned_to_name`.
+
+```sh
+curl http://localhost:8000/api/core/tickets/1 -H 'X-User-Id: 1'
+# 200 {"ticket_id":1,...,"building_name":"Building A","floor_number":3,"seat_number":"301","assigned_to_name":"Sam Tech"}
+# Someone else's ticket, or one that doesn't exist: 404 {"detail":"Ticket not found"}
+```
+
 CORS allows the frontend origin:
 
 ```sh

@@ -2,14 +2,24 @@
 
 import re
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
+# These mirror the CHECK constraints in sql/schema.sql.
 Role = Literal["employee", "engineer", "admin"]
+Category = Literal[
+    "network", "hardware", "printer", "hvac",
+    "electrical", "furniture", "building_facilities", "other",
+]
+Urgency = Literal["low", "medium", "high"]
+AffectedScope = Literal["me", "floor", "building"]
+Priority = Literal["P1", "P2", "P3"]
+TicketStatus = Literal["open", "in_progress", "blocked", "resolved", "closed"]
 
 # Postgres INTEGER max. Ids above this are rejected up front instead of erroring in the DB.
 MAX_DB_ID = 2_147_483_647
+DbId = Annotated[int, Field(ge=1, le=MAX_DB_ID)]
 
 ACME_EMAIL = re.compile(r"[^@\s]+@acme\.inc")
 
@@ -84,3 +94,97 @@ class SeatResponse(BaseModel):
     seat_id: int
     seat_number: str
     floor_id: int
+
+
+class TicketCreate(BaseModel):
+    """A new ticket from an employee. Status, priority and creator are set by the server."""
+
+    title: Annotated[TrimmedText, StringConstraints(max_length=150)]
+    short_description: Annotated[TrimmedText, StringConstraints(max_length=280)]
+    description: Annotated[TrimmedText, StringConstraints(max_length=5000)]
+    category: Category
+    urgency: Urgency
+    affected_scope: AffectedScope
+    building_id: DbId
+    floor_id: DbId | None = None
+    seat_id: DbId | None = None
+
+    @model_validator(mode="after")
+    def location_matches_scope(self) -> Self:
+        """Require at least the location levels the scope implies. Extra detail is allowed."""
+        if self.seat_id is not None and self.floor_id is None:
+            raise ValueError("A seat_id requires a floor_id")
+        if self.affected_scope == "floor" and self.floor_id is None:
+            raise ValueError("Floor-wide issues need a floor_id")
+        if self.affected_scope == "me" and self.seat_id is None:
+            raise ValueError("Issues affecting only you need a floor_id and seat_id")
+        return self
+
+
+class TicketFilters(BaseModel):
+    """Query parameters for the my-tickets list. All optional; they combine with AND."""
+
+    status: TicketStatus | None = None
+    urgency: Urgency | None = None
+    priority: Priority | None = None
+    # "active" is everything not closed, so resolved tickets awaiting closure still show.
+    view: Literal["active", "closed"] | None = None
+    q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+
+
+class TicketListItem(BaseModel):
+    """A ticket summary for list views, with location names filled in."""
+
+    ticket_id: int
+    title: str
+    short_description: str
+    category: Category
+    status: TicketStatus
+    urgency: Urgency
+    priority: Priority
+    affected_scope: AffectedScope
+    escalation_requested: bool
+    building_id: int
+    building_name: str
+    floor_id: int | None
+    floor_number: int | None
+    seat_id: int | None
+    seat_number: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TicketResponse(BaseModel):
+    """A ticket row as stored."""
+
+    ticket_id: int
+    title: str
+    short_description: str
+    description: str
+    category: Category
+    urgency: Urgency
+    affected_scope: AffectedScope
+    priority: Priority
+    status: TicketStatus
+    building_id: int
+    floor_id: int | None
+    seat_id: int | None
+    created_by_user_id: int
+    assigned_to_user_id: int | None
+    escalation_requested: bool
+    escalation_reason: str | None
+    blocked_reason: str | None
+    created_at: datetime
+    updated_at: datetime
+    acknowledged_at: datetime | None
+    assigned_at: datetime | None
+    resolved_at: datetime | None
+
+
+class TicketDetail(TicketResponse):
+    """A full ticket plus the names a details page shows."""
+
+    building_name: str
+    floor_number: int | None
+    seat_number: str | None
+    assigned_to_name: str | None
