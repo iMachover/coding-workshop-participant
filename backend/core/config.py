@@ -18,7 +18,11 @@ class Settings:
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
     postgres_name: str = os.getenv("POSTGRES_NAME", "codingworkshop")
     postgres_user: str = os.getenv("POSTGRES_USER", "test")
-    postgres_pass: str = os.getenv("POSTGRES_PASS", "test")
+    # repr=False keeps secrets out of logs and error messages that print settings.
+    postgres_pass: str = field(default=os.getenv("POSTGRES_PASS", "test"), repr=False)
+    # Signs access tokens (HS256). Required in AWS; see tokens.py for local development.
+    jwt_secret: str = field(default=os.getenv("JWT_SECRET", ""), repr=False)
+    jwt_expires_minutes: int = int(os.getenv("JWT_EXPIRES_MINUTES", "60"))
     cors_origins: list[str] = field(
         default_factory=lambda: _split_csv(
             os.getenv("CORS_ORIGINS", "http://localhost:3000")

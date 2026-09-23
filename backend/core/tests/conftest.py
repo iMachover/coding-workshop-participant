@@ -9,6 +9,7 @@ import os
 # Settings are read at import time, so point them at the test database first.
 os.environ["IS_LOCAL"] = "true"
 os.environ["POSTGRES_NAME"] = os.environ.get("TEST_POSTGRES_NAME", "codingworkshop_test")
+os.environ["JWT_SECRET"] = "test-only-signing-secret-0123456789abcdef"
 
 from collections.abc import Callable  # noqa: E402
 from pathlib import Path  # noqa: E402
