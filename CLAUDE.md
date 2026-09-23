@@ -60,6 +60,7 @@ Terraform injects these into every Lambda ([infra/locals.tf](infra/locals.tf) `e
 | `POSTGRES_HOST` | Aurora endpoint |
 | `POSTGRES_NAME` / `_USER` / `_PASS` | `codingworkshop` / `superadmin` / random |
 | `MONGO_*` | DocumentDB, **only if `TF_VAR_aws_mongo_enabled=true`**; otherwise unset |
+| `JWT_SECRET` | `random_password.jwt_secret` (64 chars, `infra/main.tf`); signs access tokens |
 
 Empty values are dropped entirely, so code must tolerate missing vars. Postgres needs `sslmode=require`, and Mongo needs `tls=True, tlsAllowInvalidCertificates=True, retryWrites=False`.
 

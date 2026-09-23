@@ -292,8 +292,19 @@ The backend reads its settings from environment variables in [backend/core/confi
 | `IS_LOCAL` | `true` | Turns on local CORS and turns off Postgres SSL. Terraform sets it to `false` in AWS, where Aurora requires SSL. |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of browser origins allowed locally |
 | `POSTGRES_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASS` | `localhost` / `5432` / `codingworkshop` / `test` / `test` | Database connection settings |
+| `JWT_SECRET` | Random per process, locally only | Signs access tokens (HS256). At least 32 characters. **Required in AWS**, where the backend refuses to sign tokens without it. Terraform generates one (`random_password.jwt_secret` in [infra/main.tf](infra/main.tf)) and passes it to every Lambda. |
+| `JWT_EXPIRES_MINUTES` | `60` | How long an access token lasts |
 
 CORS is only enabled locally. In AWS, the frontend and the API are served from the same CloudFront domain, so the browser doesn't need CORS.
+
+Without `JWT_SECRET`, the local backend makes up a random secret each time it starts, and `--reload` restarts it on every code change. Each restart signs everyone out ("Invalid token. Please sign in again."). To stay signed in while you work, set a fixed secret in the terminal that runs the backend:
+
+```sh
+export JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
+```
+
+In AWS the secret stays the same across deploys. Rotating it signs every user out. To rotate it, replace `random_password.jwt_secret` in a Terraform apply (`-replace=random_password.jwt_secret`), using the same credentials and backend setup as [bin/deploy-backend.sh](bin/deploy-backend.sh).
 
 ## Deployment
 
