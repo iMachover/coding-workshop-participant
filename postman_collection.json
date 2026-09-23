@@ -103,6 +103,14 @@
     {
       "key": "acknowledgedAt",
       "value": ""
+    },
+    {
+      "key": "adminUserId",
+      "value": ""
+    },
+    {
+      "key": "otherUserId",
+      "value": ""
     }
   ],
   "item": [
@@ -1729,7 +1737,10 @@
                   "",
                   "const body = pm.response.json();",
                   "pm.test('Signed in as an admin', () => pm.expect(body.user && body.user.role).to.eql('admin'));",
-                  "if (body.user && body.user.role === 'admin') pm.collectionVariables.set('adminAccessToken', body.access_token);"
+                  "if (body.user && body.user.role === 'admin') {",
+                  "  pm.collectionVariables.set('adminAccessToken', body.access_token);",
+                  "  pm.collectionVariables.set('adminUserId', body.user.user_id);",
+                  "}"
                 ]
               }
             }
@@ -2520,6 +2531,518 @@
                       "  pm.expect(other.active_count).to.be.at.least(1);",
                       "  pm.expect(other.open_count).to.be.at.least(1);",
                       "});"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "People",
+          "description": "Listing people and moving the collection's second user between employee and engineer.",
+          "item": [
+            {
+              "name": "List people",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users"
+                  ]
+                },
+                "description": "Everyone, by name, with their role and active tickets (open, in progress, blocked) assigned to them."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const users = pm.response.json();",
+                      "pm.test('User shape, no password', () => users.forEach((u) => pm.expect(u).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at', 'active_ticket_count')));",
+                      "pm.test('Includes the employee from Register', () => pm.expect(users.map((u) => u.user_id)).to.include(Number(pm.collectionVariables.get('userId'))));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List people - employee by email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users?role=employee&q={{otherEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "employee"
+                    },
+                    {
+                      "key": "q",
+                      "value": "{{otherEmail}}"
+                    }
+                  ]
+                },
+                "description": "`role` filters; `q` matches name or email (case-insensitive). Saves the second user's id as `{{otherUserId}}`."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.unset('otherUserId');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const users = pm.response.json();",
+                      "pm.test('Exactly the second user, an employee', () => {",
+                      "  pm.expect(users).to.have.lengthOf(1);",
+                      "  pm.expect(users[0].email).to.eql(pm.collectionVariables.get('otherEmail'));",
+                      "  pm.expect(users[0].role).to.eql('employee');",
+                      "  pm.expect(users[0].active_ticket_count).to.eql(0);",
+                      "});",
+                      "if (users.length === 1) pm.collectionVariables.set('otherUserId', users[0].user_id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List people - unknown role (422)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users?role=boss",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "boss"
+                    }
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                      "pm.test('Points at the role param', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['query', 'role']));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Promote to engineer",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{otherUserId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{otherUserId}}",
+                    "role"
+                  ]
+                },
+                "description": "Makes the second user an engineer. Their current token stops working until they sign in again.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"engineer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "",
+                      "const user = pm.response.json();",
+                      "pm.test('Now an engineer', () => {",
+                      "  pm.expect(user.user_id).to.eql(Number(pm.collectionVariables.get('otherUserId')));",
+                      "  pm.expect(user.role).to.eql('engineer');",
+                      "});",
+                      "pm.test('User shape, no password', () => pm.expect(user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at', 'active_ticket_count'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Promoted user's old token (401)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/me",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "me"
+                  ]
+                },
+                "description": "The second user's token still says employee, so it no longer works.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{otherAccessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                      "pm.test('Asks them to sign in again', () => pm.expect(pm.response.json().detail).to.eql('Your access has changed. Please sign in again.'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Promote to engineer - already one (409)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{otherUserId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{otherUserId}}",
+                    "role"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"engineer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Other Tester is already an engineer'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Move back to employee",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{otherUserId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{otherUserId}}",
+                    "role"
+                  ]
+                },
+                "description": "An engineer with no active tickets can go back to employee.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"employee\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('An employee again', () => pm.expect(pm.response.json().role).to.eql('employee'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Move back to employee - engineer with active tickets (409)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{otherEngineerId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{otherEngineerId}}",
+                    "role"
+                  ]
+                },
+                "description": "`{{otherEngineerId}}` was given the ticket in Assign. Skipped when the Assign folder was.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"employee\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.collectionVariables.get('otherEngineerId')) {",
+                      "  console.warn('Skipped: no engineer with a ticket (the Assign folder was skipped).');",
+                      "  pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Says to reassign first', () => pm.expect(pm.response.json().detail).to.match(/ still has \\d+ active tickets?\\. Reassign them first\\.$/));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Change an admin (403)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{adminUserId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{adminUserId}}",
+                    "role"
+                  ]
+                },
+                "description": "Admin accounts, including your own, can't be changed from the app.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"engineer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                      "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql(\"Admin accounts can't be changed here\"));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Make someone an admin (422)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{otherUserId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{otherUserId}}",
+                    "role"
+                  ]
+                },
+                "description": "Only `employee` and `engineer` can be given.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"admin\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                      "pm.test('Points at role', () => pm.expect(pm.response.json().detail[0].loc).to.eql(['body', 'role']));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Change role - unknown user (404)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/{{missingId}}/role",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    "{{missingId}}",
+                    "role"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"engineer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                      "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('User not found'));"
                     ]
                   }
                 }

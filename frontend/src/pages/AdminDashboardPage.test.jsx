@@ -294,6 +294,21 @@ describe('AdminDashboardPage: engineer workload', () => {
     expect(within(workload()).getByRole('button', { name: /^Sam Tech/ })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('opens filtered to an engineer from ?engineer=', async () => {
+    renderWithProviders(<App />, { route: '/admin?engineer=4', user: ALEX })
+    await screen.findByRole('table')
+
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
+    expect(lastListFilters()).toEqual({ view: 'active', assigned_to: '4' })
+    expect(await within(workload()).findByRole('button', { name: /^Sam Tech/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('ignores a malformed ?engineer=', async () => {
+    renderWithProviders(<App />, { route: '/admin?engineer=abc', user: ALEX })
+    await screen.findByRole('table')
+    expect(lastListFilters()).toEqual({ view: 'active' })
+  })
+
   it('has an Engineer filter too', async () => {
     const user = renderDashboard()
     await screen.findByRole('table')

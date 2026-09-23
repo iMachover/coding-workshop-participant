@@ -9,10 +9,13 @@ from schemas import (
     AdminTicketDetail,
     AdminTicketFilters,
     AdminTicketListItem,
+    AdminUserResponse,
     AssignmentRequest,
     EngineerWorkload,
     NoteResponse,
+    RoleChangeRequest,
     StatusChangeResponse,
+    UserFilters,
 )
 from services import admin_ticket_service, admin_user_service
 
@@ -59,3 +62,20 @@ def assign_ticket(ticket_id: IdPath, body: AssignmentRequest) -> dict[str, Any]:
 def list_engineers() -> list[dict[str, Any]]:
     """Every engineer with their active tickets (open, in progress, blocked), lightest load first."""
     return admin_user_service.list_engineers()
+
+
+@router.get("/users", response_model=list[AdminUserResponse])
+def list_users(filters: Annotated[UserFilters, Query()]) -> list[dict[str, Any]]:
+    """Everyone, by name, with their role and active tickets. Filter by role; search name or email."""
+    return admin_user_service.list_users(filters)
+
+
+@router.put("/users/{user_id}/role", response_model=AdminUserResponse)
+def change_role(user_id: IdPath, body: RoleChangeRequest) -> dict[str, Any]:
+    """Move someone between employee and engineer. Returns them updated; they'll need to sign in again.
+
+    Admin accounts return 403. The role they already have, or an engineer who still has
+    active tickets, returns 409.
+    """
+    return admin_user_service.change_role(user_id, body.role)
+

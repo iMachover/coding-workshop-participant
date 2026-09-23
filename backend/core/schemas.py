@@ -291,6 +291,28 @@ class AssignmentRequest(BaseModel):
     engineer_id: DbId
 
 
+class UserFilters(BaseModel):
+    """Query parameters for the admin's people list. Both optional; unknown parameters are a 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Role | None = None
+    # Case-insensitive match on name or email.
+    q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+
+
+class AdminUserResponse(UserResponse):
+    """A user as a Facility Admin sees them, with how many active tickets they're assigned."""
+
+    active_ticket_count: int
+
+
+class RoleChangeRequest(BaseModel):
+    """The new role. Only employee and engineer can be given from the app; admins are set up outside it."""
+
+    role: Literal["employee", "engineer"]
+
+
 class EngineerWorkload(BaseModel):
     """An engineer and their active tickets (open, in progress or blocked), for choosing who to assign."""
 

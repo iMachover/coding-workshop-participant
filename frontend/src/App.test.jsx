@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,7 +13,10 @@ import { ALEX, JANE, renderWithProviders, SAM } from './test/renderWithProviders
 vi.mock('./services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/adminTicketService', () => ({ listAllTickets: vi.fn().mockResolvedValue([]) }))
 vi.mock('./services/locationService', () => ({ listBuildings: vi.fn().mockResolvedValue([]) }))
-vi.mock('./services/adminUserService', () => ({ listEngineers: vi.fn().mockResolvedValue([]) }))
+vi.mock('./services/adminUserService', () => ({
+  listEngineers: vi.fn().mockResolvedValue([]),
+  listUsers: vi.fn().mockResolvedValue([]),
+}))
 
 const heading = () => screen.getByRole('heading', { level: 1 })
 
@@ -92,6 +95,8 @@ describe('routing by role', () => {
     ['employee', '/admin', '/dashboard', 'Employee', JANE],
     ['employee', '/admin/tickets/5', '/dashboard', 'Employee', JANE],
     ['admin', '/tickets/5', '/admin', 'Facility Admin', ALEX],
+    ['employee', '/admin/people', '/dashboard', 'Employee', JANE],
+    ['engineer', '/admin/people', '/engineer', 'Engineer', SAM],
   ])('%s at %s is told it has no access, with a link to %s', (_role, route, home, label, user) => {
     renderWithProviders(<App />, { route, user })
 
@@ -108,6 +113,44 @@ describe('routing by role', () => {
     await user.click(screen.getByRole('link', { name: 'Go to my start page' }))
 
     expect(heading()).toHaveTextContent('Engineer workspace')
+  })
+})
+
+describe('header navigation', () => {
+  const nav = () => screen.getByRole('navigation', { name: 'Main' })
+
+  it.each([
+    ['/admin', 'Dashboard', 'Facility Admin dashboard'],
+    ['/admin/people', 'People', 'People'],
+  ])('marks the current admin page at %s', async (route, current, title) => {
+    renderWithProviders(<App />, { route, user: ALEX })
+    expect(heading()).toHaveTextContent(title)
+    expect(within(nav()).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/admin')
+    expect(within(nav()).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people')
+    expect(within(nav()).getByRole('link', { current: 'page' })).toHaveTextContent(current)
+    await act(async () => {})
+  })
+
+  it('moves between admin pages', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<App />, { route: '/admin', user: ALEX })
+
+    await user.click(within(nav()).getByRole('link', { name: 'People' }))
+    expect(heading()).toHaveTextContent('People')
+    await user.click(within(nav()).getByRole('link', { name: 'Dashboard' }))
+    expect(heading()).toHaveTextContent('Facility Admin dashboard')
+    await act(async () => {})
+  })
+
+  it('puts the links on a second row on phones', async () => {
+    renderWithProviders(<App />, { route: '/admin/people', user: ALEX, width: 375 })
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['Dashboard', 'People'])
+    await act(async () => {})
+  })
+
+  it.each([['employee', JANE], ['engineer', SAM]])('gives %s no page links', (_role, user) => {
+    renderWithProviders(<App />, { route: '/', user })
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument()
   })
 })
 

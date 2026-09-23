@@ -4,6 +4,7 @@ import Box from '@mui/material/Box'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import { useSearchParams } from 'react-router'
 
 import AdminTicketFilters from '../components/admin/AdminTicketFilters'
 import AdminTicketList from '../components/admin/AdminTicketList'
@@ -54,13 +55,18 @@ function toQuery(filters, search) {
 /**
  * Facility Admin home: the unassigned tickets that need an engineer (assignable in
  * place), each engineer's workload, then every ticket with search and filters.
- * Priority shows everywhere here.
+ * Priority shows everywhere here. `?engineer=<id>` opens it filtered to that engineer
+ * (the People page links here that way).
  */
 function AdminDashboardPage() {
+  const [searchParams] = useSearchParams()
   const queue = useAllTickets(UNASSIGNED)
   const engineers = useApiData(listEngineers)
   const buildings = useApiData(listBuildings)
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState(() => {
+    const engineer = searchParams.get('engineer') ?? ''
+    return { ...DEFAULT_FILTERS, assigned_to: /^[1-9]\d{0,9}$/.test(engineer) ? engineer : '' }
+  })
   const [notice, setNotice] = useState('')
   const search = useDebouncedValue(filters.q.trim(), 300)
   const list = useAllTickets(toQuery(filters, search))

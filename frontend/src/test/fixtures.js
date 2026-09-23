@@ -132,3 +132,11 @@ export const ENGINEERS = [
     p1_count: 1,
   },
 ]
+
+/** GET /api/core/admin/users: everyone by name, with their role and active tickets. */
+export const USERS = [
+  { user_id: 5, email: 'alex@acme.inc', full_name: 'Alex Admin', phone_number: null, role: 'admin', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 0 },
+  { user_id: 1, email: 'jane@acme.inc', full_name: 'Jane Doe', phone_number: null, role: 'employee', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 0 },
+  { user_id: 6, email: 'kim@acme.inc', full_name: 'Kim Fixit', phone_number: null, role: 'engineer', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 0 },
+  { user_id: 4, email: 'sam@acme.inc', full_name: 'Sam Tech', phone_number: null, role: 'engineer', created_at: '2026-09-20T09:00:00-04:00', active_ticket_count: 3 },
+]

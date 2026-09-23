@@ -27,3 +27,31 @@ export function homePathFor(role) {
 export function roleLabel(role) {
   return ROLES[role]?.label ?? role
 }
+
+/**
+ * Header navigation per role. `section` is the path prefix that marks a link current, so
+ * a ticket's details (/admin/tickets/5) still highlights Dashboard. Roles with a single
+ * page get no links.
+ */
+export const NAV_LINKS = {
+  admin: [
+    { to: '/admin', label: 'Dashboard', section: '/admin' },
+    { to: '/admin/people', label: 'People', section: '/admin/people' },
+  ],
+}
+
+/**
+ * The role's header links, each marked `current` for the given path. The longest
+ * matching section wins, so /admin/people is People, not Dashboard.
+ * @param {string} role
+ * @param {string} pathname
+ * @returns {{to: string, label: string, current: boolean}[]}
+ */
+export function navLinksFor(role, pathname) {
+  const links = NAV_LINKS[role] ?? []
+  const inSection = (section) => pathname === section || pathname.startsWith(`${section}/`)
+  const current = links
+    .filter((link) => inSection(link.section))
+    .sort((a, b) => b.section.length - a.section.length)[0]
+  return links.map(({ to, label }) => ({ to, label, current: current?.to === to }))
+}

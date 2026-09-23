@@ -224,6 +224,76 @@ test('an admin assigns and reassigns tickets to engineers', async ({ page, reque
   })
 })
 
+/**
+ * A3 through the UI: the People page from the header -> promote an employee (they're
+ * signed out and come back as an engineer) -> an engineer with work can't be moved back,
+ * and the refusal links to their tickets.
+ */
+test('an admin promotes an employee and manages engineers from People', async ({ page, browser, request }) => {
+  const stamp = Date.now()
+  const ren = await registerViaApi(request, { name: `Ren Newhire ${stamp}`, email: uniqueEmail('ren') })
+  const busy = await registerEngineer(request, `Busy Bee ${stamp}`)
+  const admin = await registerAdmin(request)
+  const ticket = await createTicketViaApi(request, ren, { title: `Heater rattles ${stamp}` })
+  const assigned = await request.put(`/api/core/admin/tickets/${ticket.ticket_id}/assignment`, {
+    headers: await signInViaApi(request, admin.email),
+    data: { engineer_id: busy.user_id },
+  })
+  expect(assigned.status()).toBe(200)
+
+  // Ren is signed in elsewhere, as an employee, while the admin promotes them.
+  const renPage = await (await browser.newContext()).newPage()
+  await signIn(renPage, ren.email)
+
+  await signIn(page, admin.email, { home: ADMIN_HOME })
+  const people = page.getByRole('table', { name: 'People' })
+  const rowFor = (name) => people.getByRole('row').filter({ hasText: name })
+
+  await test.step('open People from the header and find Ren', async () => {
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'People' })).toBeVisible()
+    await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
+    await expect(people.getByRole('row')).toHaveCount(3) // header + Ren + Busy Bee
+    await expect(rowFor(ren.full_name).getByRole('combobox', { name: 'Role' })).toHaveText('Employee')
+  })
+
+  await test.step('promote Ren after confirming', async () => {
+    await rowFor(ren.full_name).getByRole('combobox', { name: 'Role' }).click()
+    await page.getByRole('option', { name: 'Engineer' }).click()
+    const dialog = page.getByRole('dialog', { name: `Make ${ren.full_name} an engineer?` })
+    await expect(dialog).toContainText("They'll be signed out and need to sign in again.")
+    await dialog.getByRole('button', { name: 'Make engineer' }).click()
+
+    await expect(page.getByText(`${ren.full_name} is now an engineer. They'll need to sign in again.`)).toBeVisible()
+    await expect(rowFor(ren.full_name).getByRole('combobox', { name: 'Role' })).toHaveText('Engineer')
+  })
+
+  await test.step('Ren is signed out, and signs back in as an engineer', async () => {
+    await renPage.reload()
+    await expect(renPage).toHaveURL(/\/login$/)
+    await expect(renPage.getByRole('alert')).toHaveText('Your session has ended. Please sign in again.')
+    await signIn(renPage, ren.email, { home: 'Engineer workspace' })
+    await renPage.context().close()
+  })
+
+  await test.step('an engineer with an active ticket can\'t go back to employee', async () => {
+    await rowFor(busy.full_name).getByRole('combobox', { name: 'Role' }).click()
+    await page.getByRole('option', { name: 'Employee' }).click()
+    const dialog = page.getByRole('dialog', { name: `Move ${busy.full_name} back to employee?` })
+    await dialog.getByRole('button', { name: 'Make employee' }).click()
+
+    await expect(dialog.getByRole('alert')).toContainText(`${busy.full_name} still has 1 active ticket. Reassign them first.`)
+    await dialog.getByRole('link', { name: 'See their tickets' }).click()
+
+    await expect(page).toHaveURL(new RegExp(`/admin\\?engineer=${busy.user_id}$`))
+    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText([ticket.title])
+    // Ren is now in the workload, ready for tickets.
+    await expect(
+      page.getByRole('region', { name: 'Engineer workload' }).getByRole('button', { name: new RegExp(`^${ren.full_name}: 0 active`) }),
+    ).toBeVisible()
+  })
+})
+
 test('employees cannot open the admin pages', async ({ page, request }) => {
   const { lights } = await seedTickets(request)
   const employee = await registerViaApi(request, { name: 'Curious Employee' })
@@ -239,7 +309,7 @@ test('employees cannot open the admin pages', async ({ page, request }) => {
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })
 
-  test('the admin dashboard and ticket details fit the screen', async ({ page, request }) => {
+  test('the admin dashboard, ticket details and People fit the screen', async ({ page, request }) => {
     const { stamp, lights } = await seedTickets(request)
     const admin = await registerAdmin(request)
 
@@ -257,6 +327,13 @@ test.describe('on a phone', () => {
     await card.click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`#${lights.ticket_id} ${lights.title}`)
     await expect(page.getByRole('list', { name: 'Ticket workflow' })).toHaveCSS('flex-direction', 'column')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+
+    // The page links sit on their own row on phones.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'People' })).toBeVisible()
+    await expect(page.getByRole('table')).toHaveCount(0)
+    await expect(page.getByRole('listitem').filter({ hasText: admin.email })).toContainText('Facility Admin')
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
   })
 })

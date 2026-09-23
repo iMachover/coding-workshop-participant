@@ -4,6 +4,8 @@ from typing import Any
 
 import psycopg
 
+from repositories.sql_text import like_pattern
+
 
 def insert(
     conn: psycopg.Connection,
@@ -42,6 +44,60 @@ def get_by_id(conn: psycopg.Connection, user_id: int) -> dict[str, Any] | None:
         """,
         (user_id,),
     ).fetchone()
+
+
+def list_with_active_counts(
+    conn: psycopg.Connection,
+    *,
+    role: str | None = None,
+    search: str | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return users with their role and how many active tickets are assigned to them, by name.
+
+    Active means open, in progress or blocked. Each filter is skipped when None; search
+    matches name or email, case-insensitively. Never includes the password hash.
+    """
+    return conn.execute(
+        """
+        SELECT u.user_id, u.email, u.full_name, u.phone_number, r.role_name AS role,
+               u.created_at, count(t.ticket_id) AS active_ticket_count
+        FROM users u
+        JOIN roles r ON r.role_id = u.role_id
+        LEFT JOIN tickets t
+          ON t.assigned_to_user_id = u.user_id
+         AND t.status IN ('open', 'in_progress', 'blocked')
+        WHERE (%(role)s::text IS NULL OR r.role_name = %(role)s)
+          AND (%(user_id)s::integer IS NULL OR u.user_id = %(user_id)s)
+          AND (%(search)s::text IS NULL
+               OR u.full_name ILIKE %(pattern)s
+               OR u.email ILIKE %(pattern)s)
+        GROUP BY u.user_id, r.role_name
+        ORDER BY u.full_name, u.user_id
+        """,
+        {
+            "role": role,
+            "user_id": user_id,
+            "search": search,
+            "pattern": like_pattern(search) if search else None,
+        },
+    ).fetchall()
+
+
+def lock(conn: psycopg.Connection, user_id: int) -> None:
+    """Lock a user row until the transaction ends, so their role can't change underneath us."""
+    conn.execute("SELECT 1 FROM users WHERE user_id = %s FOR UPDATE", (user_id,))
+
+
+def set_role(conn: psycopg.Connection, user_id: int, role: str) -> None:
+    """Give a user a role by name."""
+    conn.execute(
+        """
+        UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = %s)
+        WHERE user_id = %s
+        """,
+        (role, user_id),
+    )
 
 
 def list_engineers_with_workload(conn: psycopg.Connection) -> list[dict[str, Any]]:

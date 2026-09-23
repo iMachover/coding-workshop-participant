@@ -77,6 +77,8 @@ def assign_ticket(ticket_id: int, engineer_id: int) -> dict[str, Any]:
         if ticket["status"] in UNASSIGNABLE_STATUSES:
             raise ConflictError(f"{UNASSIGNABLE_STATUSES[ticket['status']]} tickets can't be assigned")
 
+        # Locked too, so the engineer can't be demoted while this assignment commits.
+        user_repository.lock(conn, engineer_id)
         engineer = user_repository.get_by_id(conn, engineer_id)
         if engineer is None or engineer["role"] != "engineer":
             raise BadRequestError(f"User {engineer_id} is not an engineer")

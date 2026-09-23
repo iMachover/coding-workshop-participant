@@ -10,6 +10,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
+import PeoplePage from './pages/PeoplePage'
 import RegisterPage from './pages/RegisterPage'
 import StaffHomePage from './pages/StaffHomePage'
 import TicketDetailsPage from './pages/TicketDetailsPage'
@@ -23,8 +24,8 @@ function HomeRedirect() {
 
 /**
  * Route table: sign-in pages for guests, then one group per role. Employees report
- * and follow their own tickets; Facility Admins triage every ticket; engineers have
- * a placeholder start page for now.
+ * and follow their own tickets; Facility Admins triage every ticket and manage who is
+ * an engineer; engineers have a placeholder start page for now.
  */
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
         <Route element={<ProtectedRoute roles={['admin']} />}>
           <Route path="admin" element={<AdminDashboardPage />} />
           <Route path="admin/tickets/:ticketId" element={<AdminTicketDetailsPage />} />
+          <Route path="admin/people" element={<PeoplePage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

@@ -40,12 +40,17 @@ ADMIN_ONLY = [
     ("GET", "/admin/tickets/{ticket_id}/history", None),
     ("PUT", "/admin/tickets/{ticket_id}/assignment", {"engineer_id": 1}),
     ("GET", "/admin/engineers", None),
+    ("GET", "/admin/users", None),
+    ("PUT", "/admin/users/{user_id}/role", {"role": "engineer"}),
 ]
 
 
 def _url(path: str, ticket_id: int = 1) -> str:
-    return API_PREFIX + path.replace("{ticket_id}", str(ticket_id)).replace("{building_id}", "1").replace(
-        "{floor_id}", "1"
+    return API_PREFIX + (
+        path.replace("{ticket_id}", str(ticket_id))
+        .replace("{building_id}", "1")
+        .replace("{floor_id}", "1")
+        .replace("{user_id}", "1")
     )
 
 

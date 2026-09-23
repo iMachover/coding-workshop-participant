@@ -59,7 +59,7 @@ Frontend code lives in `frontend/src/`:
 | Folder / file | Holds |
 |---|---|
 | `pages/` | One component per route |
-| `components/` | Shared UI: app header and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `Panel`, `BackLink`; `dashboard/`, `tickets/` and `admin/` hold feature pieces. `PriorityChip` is for staff screens only: employee pages never show priority. |
+| `components/` | Shared UI: app header (with each role's page links, from `NAV_LINKS` in `utils/roles.js`) and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `Panel`, `BackLink`; `dashboard/`, `tickets/` and `admin/` hold feature pieces. `PriorityChip` is for staff screens only: employee pages never show priority. |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useAllTickets` (admin), `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
@@ -98,6 +98,7 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); `/admin` is admin-only (403 for employees and engineers); shared routes work for every role |
 | `test_admin_tickets.py` | The admin's all-tickets list: triage order (P1 first, then longest-waiting), every filter and search, 422s; details with priority and requester contact; reading any ticket's notes and history; 404s |
 | `test_admin_assignment.py` | Assigning and reassigning: acknowledged once, `assigned_at` moves, status and history untouched, 409 for finished tickets or the same engineer, 400 for non-engineers, 404, 422. Engineer workload: only active tickets count, by status and P1, lightest first |
+| `test_admin_users.py` | The people list (by name, role and active-ticket counts, role filter, name/email search, 422s) and role changes: promoting signs the person out and makes them assignable, demoting is blocked while they have active tickets, same role 409, admin accounts 403, `admin` can't be given (422), 404 |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 | `test_status_history.py` | Creating a ticket records it as opened, a reopened ticket keeps every step in order, the table's constraints, and `schema.sql` backfilling tickets made before the history existed |
 
@@ -138,7 +139,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 |---|---|
 | `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
 | `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, an engineer landing on their own workspace (and never calling the tickets API), and the phone layout |
-| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). Also: employees can't open the admin pages, and the admin pages fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`), since no API promotes users yet. |
+| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Also: employees can't open the admin pages, and the admin pages fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
 
 ### Manual checks with curl
 
@@ -282,7 +283,7 @@ curl -X POST http://localhost:8000/api/core/tickets/5/escalation -H "Authorizati
 
 #### Facility Admin: all tickets
 
-Admins only; `$ADMIN_TOKEN` is an admin's login token. There's no API to promote a user yet, so set their `role_id` in SQL first (see Known limitations).
+Admins only; `$ADMIN_TOKEN` is an admin's login token. Admin accounts are set up in SQL (see Known limitations); engineers can be promoted through the API below.
 
 List every ticket, whoever created it. Sorted for triage: priority first (P1, P2, P3), then the oldest created first. Each row is the employee list row plus `priority`, `created_by_user_id`, `created_by_name`, `assigned_to_user_id` and `assigned_to_name`.
 
@@ -356,6 +357,32 @@ curl -X PUT http://localhost:8000/api/core/admin/tickets/1/assignment -H "Author
 | Already assigned to that engineer | 409 `This ticket is already assigned to Sam Tech` |
 | Missing or non-positive `engineer_id` | 422 |
 
+#### Facility Admin: people and roles
+
+Everyone, by name, with their role and how many active tickets (open, in progress or blocked) are assigned to them. Filter by `role` (`employee`, `engineer`, `admin`); `q` searches name or email, case-insensitively.
+
+```sh
+curl 'http://localhost:8000/api/core/admin/users?role=engineer' -H "Authorization: Bearer $ADMIN_TOKEN"
+# 200 [{"user_id":2,"email":"engineer1@acme.inc","full_name":"Sam Tech","phone_number":null,"role":"engineer",
+#       "created_at":"2026-09-23T15:02:32.822430-04:00","active_ticket_count":1}]
+```
+
+Move someone between employee and engineer. Returns them updated. Their current token stops working (401 `Your access has changed. Please sign in again.`), so they sign in again with the new role.
+
+```sh
+curl -X PUT http://localhost:8000/api/core/admin/users/3/role -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"role":"engineer"}'
+# 200 {"user_id":3,"email":"jane.doe@acme.inc","full_name":"Jane Doe",...,"role":"engineer","active_ticket_count":0}
+```
+
+| Problem | Status and `detail` |
+|---|---|
+| User doesn't exist | 404 `User not found` |
+| The user is an admin (including yourself) | 403 `Admin accounts can't be changed here` |
+| They already have that role | 409 `Jane Doe is already an engineer` |
+| An engineer with active tickets back to employee | 409 `Sam Tech still has 1 active ticket. Reassign them first.` |
+| `role` missing or not `employee`/`engineer` (e.g. `admin`) | 422 |
+
 CORS allows the frontend origin:
 
 ```sh
@@ -403,7 +430,7 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- The employee side is built; the staff side is in progress. Facility admins have a dashboard (`/admin`: the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) and a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket; notes are read-only for them. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers sign in to a placeholder start page (`/engineer`). The endpoints for changing status, blocking and closing don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set their `role_id` in the `users` table directly, to one of the rows in `roles` (`employee`, `engineer`, `admin`).
+- The employee side is built; the staff side is in progress. Facility admins have a dashboard (`/admin`: the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket (notes are read-only for them), and a People page (`/admin/people`) to move people between employee and engineer. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers sign in to a placeholder start page (`/engineer`). The endpoints for changing status, blocking and closing don't exist yet, and tests stand in for them with SQL. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts are only set up in SQL: set their `role_id` in the `users` table to the `admin` row in `roles`.
 - Status history is only written when a ticket is created, since nothing else changes status yet. The engineer and admin endpoints must call `ticket_repository.insert_status_change` in the same transaction as every status update, or the history will miss that step.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

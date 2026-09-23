@@ -4,11 +4,7 @@ from typing import Any
 
 import psycopg
 
-
-def _like_pattern(text: str) -> str:
-    """Wrap text for a 'contains' ILIKE, escaping % and _ so they match literally."""
-    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
+from repositories.sql_text import like_pattern
 
 
 def list_for_creator(
@@ -51,7 +47,7 @@ def list_for_creator(
             "urgency": urgency,
             "closed": closed,
             "search": search,
-            "pattern": _like_pattern(search) if search else None,
+            "pattern": like_pattern(search) if search else None,
         },
     ).fetchall()
 
@@ -145,7 +141,7 @@ def list_all(
             "escalated": escalated,
             "closed": closed,
             "search": search,
-            "pattern": _like_pattern(search) if search else None,
+            "pattern": like_pattern(search) if search else None,
         },
     ).fetchall()
 
