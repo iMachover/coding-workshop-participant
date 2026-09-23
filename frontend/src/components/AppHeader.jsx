@@ -1,6 +1,7 @@
 import AppBar from '@mui/material/AppBar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
@@ -10,10 +11,12 @@ import { Link as RouterLink, useNavigate } from 'react-router'
 
 import useAuth from '../auth/useAuth'
 import useIsMobile from '../hooks/useIsMobile'
+import { roleLabel } from '../utils/roles'
 
 /**
  * Shared top bar: app name, and the signed-in user's name with a sign-out action.
- * On phones the name is hidden and sign-out becomes an icon button.
+ * Engineers and admins also get a role chip. On phones the name is hidden and
+ * sign-out becomes an icon button.
  */
 function AppHeader() {
   const isMobile = useIsMobile()
@@ -41,6 +44,14 @@ function AppHeader() {
         {user && (
           <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
             {!isMobile && <Typography component="span">{user.full_name}</Typography>}
+            {user.role !== 'employee' && (
+              <Chip
+                label={roleLabel(user.role)}
+                size="small"
+                variant="outlined"
+                sx={{ color: 'inherit', borderColor: 'currentColor' }}
+              />
+            )}
             {isMobile ? (
               <IconButton color="inherit" aria-label="Sign out" onClick={handleSignOut}>
                 <LogoutIcon />

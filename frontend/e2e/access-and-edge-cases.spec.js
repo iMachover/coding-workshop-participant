@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { sql } from './db.js'
-import { createTicketViaApi, registerViaApi, signIn, uniqueEmail } from './helpers.js'
+import { createTicketViaApi, PASSWORD, registerViaApi, signIn, uniqueEmail } from './helpers.js'
 
 test('an employee cannot open another employee\'s ticket', async ({ page, request }) => {
   const owner = await registerViaApi(request, { name: 'Ticket Owner' })
@@ -51,13 +51,39 @@ test('a forged or stale token is signed out with an explanation', async ({ page 
   // Token-shaped, but not signed by the server: the API must reject it with 401.
   const forged = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxIiwicm9sZSI6ImFkbWluIn0', 'bm90LWEtcmVhbC1zaWduYXR1cmU']
   await page.evaluate((token) =>
-    localStorage.setItem('helpdesk.session', JSON.stringify({ token, user: { user_id: 1, full_name: 'Ghost' } })),
+    localStorage.setItem('helpdesk.session', JSON.stringify({ token, user: { user_id: 1, full_name: 'Ghost', role: 'employee' } })),
   forged.join('.'))
 
   await page.goto('/dashboard')
 
   await expect(page).toHaveURL(/\/login$/)
   await expect(page.getByRole('alert')).toHaveText('Your session has ended. Please sign in again.')
+})
+
+test('an engineer lands on their own workspace and never calls the employee API', async ({ page, request }) => {
+  const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
+  // Stand-in for an admin promoting them: no API can change roles yet.
+  sql(`UPDATE users SET role = 'engineer' WHERE user_id = ${Number(engineer.user_id)}`)
+  const ticketCalls = []
+  page.on('response', (response) => {
+    if (response.url().includes('/api/core/tickets')) ticketCalls.push(response.status())
+  })
+
+  await page.goto('/login')
+  await page.getByLabel(/^Work email/).fill(engineer.email)
+  await page.getByLabel(/^Password/).fill(PASSWORD)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page).toHaveURL(/\/engineer$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Engineer workspace' })).toBeVisible()
+  await expect(page.getByRole('banner')).toContainText('Engineer')
+
+  await page.goto('/dashboard')
+  await expect(page.getByRole('heading', { level: 1, name: "You don't have access to this" })).toBeVisible()
+  await page.getByRole('link', { name: 'Go to my start page' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Engineer workspace' })).toBeVisible()
+
+  expect(ticketCalls).toEqual([])
 })
 
 test.describe('on a phone', () => {

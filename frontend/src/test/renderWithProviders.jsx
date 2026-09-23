@@ -16,6 +16,10 @@ export const JANE = {
   created_at: '2026-09-22T20:21:06-04:00',
 }
 
+/** Staff users, for role-based routing. */
+export const SAM = { ...JANE, user_id: 4, email: 'sam@acme.inc', full_name: 'Sam Tech', role: 'engineer' }
+export const ALEX = { ...JANE, user_id: 5, email: 'alex@acme.inc', full_name: 'Alex Admin', role: 'admin' }
+
 /** A token-shaped placeholder; unit tests mock the API, so it is never verified. */
 export const TEST_TOKEN = 'test.header.token'
 

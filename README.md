@@ -59,11 +59,11 @@ Frontend code lives in `frontend/src/`:
 | Folder / file | Holds |
 |---|---|
 | `pages/` | One component per route |
-| `components/` | Shared UI: app header and layout, route guards, `ErrorState`; `dashboard/` and `tickets/` hold feature pieces |
+| `components/` | Shared UI: app header and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`; `dashboard/` and `tickets/` hold feature pieces |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
-| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, and the workflow (Blocked is a side state off In Progress, not a step) |
+| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, the workflow (Blocked is a side state off In Progress, not a step), and each role's label and start page (`roles.js`) |
 | `frontend/e2e/` (outside `src/`) | Playwright end-to-end tests (see Testing) |
 | `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 
@@ -133,7 +133,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 | Spec | Covers |
 |---|---|
 | `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
-| `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, and the phone layout |
+| `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, an engineer landing on their own workspace (and never calling the tickets API), and the phone layout |
 
 ### Manual checks with curl
 
@@ -303,6 +303,6 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- Only the employee side exists. Engineer and facility-admin screens and endpoints (assigning, changing status, blocking, closing) are not built yet; tests stand in for them with SQL.
+- Only the employee side is built. Engineers and facility admins sign in to their own start pages (`/engineer`, `/admin`), which are placeholders for now: their endpoints (assigning, changing status, blocking, closing) don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set `role` in the `users` table directly.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

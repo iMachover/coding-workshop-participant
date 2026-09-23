@@ -12,6 +12,7 @@ import useAuth from '../auth/useAuth'
 import AuthCard from '../components/AuthCard'
 import { ApiError } from '../services/apiClient'
 import { login } from '../services/authService'
+import { homePathFor } from '../utils/roles'
 
 /**
  * Pick the banner for how the user got here: just registered, signed out (by
@@ -27,7 +28,8 @@ function arrivalNotice(state, signOutNotice) {
 }
 
 /**
- * Sign in with work email and password, then return to where the user was headed.
+ * Sign in with work email and password, then return to where the user was headed,
+ * or to the start page for their role.
  */
 function LoginPage() {
   const { state } = useLocation()
@@ -59,8 +61,9 @@ function LoginPage() {
 
     setSubmitting(true)
     try {
-      signIn(await login(values))
-      navigate(state?.from ?? '/dashboard', { replace: true })
+      const session = await login(values)
+      signIn(session)
+      navigate(state?.from ?? homePathFor(session.user.role), { replace: true })
     } catch (error) {
       setFormError(error instanceof ApiError ? error.message : 'Something went wrong. Please try again.')
       setSubmitting(false)

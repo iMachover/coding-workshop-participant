@@ -14,13 +14,16 @@ const STORAGE_KEY = 'helpdesk.session'
 const JWT_SHAPE = /^[\w-]+\.[\w-]+\.[\w-]+$/
 
 /**
- * The stored session, or null if there is none or it can't be read.
- * @returns {{token: string, user: {user_id: number}} | null}
+ * The stored session, or null if there is none or it can't be read. The user's role
+ * is required because routing depends on it (the API still checks the real one).
+ * @returns {{token: string, user: {user_id: number, role: string}} | null}
  */
 export function getSession() {
   try {
     const session = JSON.parse(localStorage.getItem(STORAGE_KEY))
-    const valid = JWT_SHAPE.test(session?.token) && Number.isInteger(session?.user?.user_id)
+    const valid = JWT_SHAPE.test(session?.token)
+      && Number.isInteger(session?.user?.user_id)
+      && typeof session.user.role === 'string'
     return valid ? session : null
   } catch {
     return null

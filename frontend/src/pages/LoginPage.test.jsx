@@ -6,7 +6,7 @@ import App from '../App'
 import { ApiError } from '../services/apiClient'
 import { login } from '../services/authService'
 import { getSession } from '../services/session'
-import { JANE, renderWithProviders, TEST_TOKEN } from '../test/renderWithProviders'
+import { ALEX, JANE, renderWithProviders, SAM, TEST_TOKEN } from '../test/renderWithProviders'
 
 const SESSION = { token: TEST_TOKEN, user: JANE }
 
@@ -93,6 +93,18 @@ describe('LoginPage', () => {
     await signInAs(user)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'My dashboard' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['an engineer', SAM, 'Engineer workspace'],
+    ['an admin', ALEX, 'Facility Admin workspace'],
+  ])('sends %s to their own start page', async (_who, staff, name) => {
+    vi.mocked(login).mockResolvedValue({ token: TEST_TOKEN, user: staff })
+    const user = renderPage()
+
+    await signInAs(user, staff.email)
+
+    expect(await screen.findByRole('heading', { level: 1, name })).toBeInTheDocument()
   })
 
   it('disables the form while signing in', async () => {

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { api, ApiError, onUnauthorized, toApiError } from './apiClient'
 import { storeSession } from './session'
 
-const session = (userId = 7) => ({ token: 'aaa.bbb.ccc', user: { user_id: userId } })
+const session = (userId = 7) => ({ token: 'aaa.bbb.ccc', user: { user_id: userId, role: 'employee' } })
 
 function mockFetch(status, body) {
   const fetchMock = vi.fn().mockResolvedValue({
