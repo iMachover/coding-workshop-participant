@@ -52,11 +52,17 @@ In a second terminal:
 cd frontend && npm run dev
 ```
 
-The app runs at http://localhost:3000. To point it at the local backend, create `frontend/.env.development.local` containing:
+The app runs at http://localhost:3000. It calls the API at relative `/api/core/...` URLs, and the Vite dev server forwards `/api` to the backend on port 8000 (see [frontend/vite.config.js](frontend/vite.config.js)). In AWS, CloudFront does the same on one domain, so no API URL or CORS setup is needed. `VITE_API_URL` can still point the app at another API host if you need to.
 
-```
-VITE_API_URL=http://localhost:8000
-```
+Frontend code lives in `frontend/src/`:
+
+| Folder / file | Holds |
+|---|---|
+| `pages/` | One component per route |
+| `components/` | Shared UI (app header, layout) |
+| `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
+| `hooks/` | Shared hooks, e.g. `useIsMobile` (react-responsive) |
+| `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 
 ## Testing
 
@@ -87,6 +93,20 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 
 CI runs `bandit -r ./backend`. `backend/.bandit` skips `tests/` folders there, since tests use `assert` and fake passwords on purpose.
+
+### Frontend tests
+
+Vitest and React Testing Library, with API calls mocked. No backend needed.
+
+```sh
+cd frontend
+npm test            # run once
+npm run test:watch  # re-run on save
+npm run coverage    # with a coverage report
+npm run lint
+```
+
+Tests sit next to the code they cover (`apiClient.test.js` beside `apiClient.js`). `src/test/renderWithProviders.jsx` renders a component with the theme and router at a given URL and screen width, e.g. `{ width: 375 }` for a phone.
 
 ### Manual checks with curl
 
@@ -236,3 +256,8 @@ CORS is only enabled locally. In AWS, the frontend and the API are served from t
 ## Deployment
 
 See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources, so check before running them.
+
+## Known limitations
+
+- **Sign-in is temporary and dev-only. It is not real authentication.** Login returns the user, the frontend keeps it in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)), and every request sends its id as the `X-User-Id` header. Anyone can send any id. JWT will replace this: only `session.js`, `apiClient.js` and the backend's `deps.get_current_user` need to change.
+- List endpoints return every matching record, with no pagination yet.
