@@ -63,7 +63,8 @@ test('a forged or stale token is signed out with an explanation', async ({ page 
 test('an engineer lands on their own workspace and never calls the employee API', async ({ page, request }) => {
   const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
   // Stand-in for an admin promoting them: no API can change roles yet.
-  sql(`UPDATE users SET role = 'engineer' WHERE user_id = ${Number(engineer.user_id)}`)
+  sql(`UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = 'engineer')
+       WHERE user_id = ${Number(engineer.user_id)}`)
   const ticketCalls = []
   page.on('response', (response) => {
     if (response.url().includes('/api/core/tickets')) ticketCalls.push(response.status())

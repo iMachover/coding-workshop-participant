@@ -63,9 +63,9 @@ def test_login_returns_a_token_and_the_user(client, api, register) -> None:
     assert claims == tokens.TokenClaims(user_id=user["user_id"], role="employee")
 
 
-def test_login_signs_the_role_currently_in_the_database(client, api, register, run_sql) -> None:
+def test_login_signs_the_role_currently_in_the_database(client, api, register, set_role) -> None:
     user = register()
-    run_sql("UPDATE users SET role = 'engineer' WHERE user_id = %s", (user["user_id"],))
+    set_role(user["user_id"], "engineer")
 
     response = client.post(f"{api}/auth/login", json={"email": "jane@acme.inc", "password": "password123"})
 
@@ -146,8 +146,8 @@ def test_a_deleted_users_token_stops_working(client, api, jane, jane_user, run_s
 
 
 @pytest.mark.parametrize("new_role", ["engineer", "admin"])
-def test_a_token_stops_working_when_the_role_changes(client, api, jane, jane_user, run_sql, new_role) -> None:
-    run_sql("UPDATE users SET role = %s WHERE user_id = %s", (new_role, jane_user["user_id"]))
+def test_a_token_stops_working_when_the_role_changes(client, api, jane, jane_user, set_role, new_role) -> None:
+    set_role(jane_user["user_id"], new_role)
     response = client.get(f"{api}/auth/me", headers=jane)
     assert response.status_code == 401
     assert response.json() == {"detail": ROLE_CHANGED}

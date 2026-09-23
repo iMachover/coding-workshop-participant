@@ -109,9 +109,10 @@ def list_notes(conn: psycopg.Connection, ticket_id: int) -> list[dict[str, Any]]
     return conn.execute(
         """
         SELECT n.note_id, n.ticket_id, n.user_id, u.full_name AS author_name,
-               u.role AS author_role, n.note_text, n.created_at
+               r.role_name AS author_role, n.note_text, n.created_at
         FROM ticket_notes n
         JOIN users u ON u.user_id = n.user_id
+        JOIN roles r ON r.role_id = u.role_id
         WHERE n.ticket_id = %s
         ORDER BY n.created_at, n.note_id
         """,
@@ -131,9 +132,10 @@ def insert_note(
             RETURNING note_id, ticket_id, user_id, note_text, created_at
         )
         SELECT n.note_id, n.ticket_id, n.user_id, u.full_name AS author_name,
-               u.role AS author_role, n.note_text, n.created_at
+               r.role_name AS author_role, n.note_text, n.created_at
         FROM n
         JOIN users u ON u.user_id = n.user_id
+        JOIN roles r ON r.role_id = u.role_id
         """,
         (ticket_id, user_id, note_text),
     ).fetchone()
@@ -145,9 +147,10 @@ def list_status_history(conn: psycopg.Connection, ticket_id: int) -> list[dict[s
         """
         SELECT h.history_id, h.ticket_id, h.from_status, h.to_status,
                h.changed_by_user_id, u.full_name AS changed_by_name,
-               u.role AS changed_by_role, h.reason, h.changed_at
+               r.role_name AS changed_by_role, h.reason, h.changed_at
         FROM ticket_status_history h
         JOIN users u ON u.user_id = h.changed_by_user_id
+        JOIN roles r ON r.role_id = u.role_id
         WHERE h.ticket_id = %s
         ORDER BY h.changed_at, h.history_id
         """,

@@ -1,16 +1,41 @@
 -- Employee-slice tables for the Facilities Helpdesk.
 -- Safe to re-run: every statement uses IF NOT EXISTS. Use reset.sql to start over.
 
+CREATE TABLE IF NOT EXISTS roles (
+    role_id   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    role_name TEXT NOT NULL UNIQUE
+);
+
+INSERT INTO roles (role_name)
+VALUES ('employee'), ('engineer'), ('admin')
+ON CONFLICT (role_name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS users (
     user_id       INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email         TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
     full_name     TEXT NOT NULL,
     phone_number  TEXT,
-    role          TEXT NOT NULL DEFAULT 'employee'
-                  CHECK (role IN ('employee', 'engineer', 'admin')),
+    role_id       INTEGER NOT NULL REFERENCES roles (role_id),
     password_hash TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Databases created before the roles table kept each user's role as text in users.role.
+-- Move it to users.role_id and drop the old column, all or nothing. Does nothing on a new
+-- database. The old CHECK allowed only the three seeded names, so every user finds a role.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'role'
+    ) THEN
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles (role_id);
+        UPDATE users u SET role_id = r.role_id FROM roles r WHERE r.role_name = u.role;
+        ALTER TABLE users ALTER COLUMN role_id SET NOT NULL;
+        ALTER TABLE users DROP COLUMN role;
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS buildings (
     building_id   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

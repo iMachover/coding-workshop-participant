@@ -6,8 +6,9 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-# These mirror the CHECK constraints in sql/schema.sql. Ticket priority (P1-P3) is stored
-# for engineer/admin triage but is deliberately not part of any employee model.
+# These mirror the CHECK constraints in sql/schema.sql, and Role mirrors the rows seeded
+# into its roles table. Ticket priority (P1-P3) is stored for engineer/admin triage but is
+# deliberately not part of any employee model.
 Role = Literal["employee", "engineer", "admin"]
 Category = Literal[
     "network", "hardware", "printer", "hvac",

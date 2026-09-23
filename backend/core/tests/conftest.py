@@ -108,14 +108,28 @@ def bearer(user: dict[str, Any]) -> Headers:
 
 
 @pytest.fixture
+def set_role(run_sql: Callable[..., list[dict[str, Any]]]) -> Callable[[int, str], None]:
+    """Give a user a role by name, directly in SQL, since the API can't promote anyone yet."""
+
+    def _set(user_id: int, role: str) -> None:
+        run_sql(
+            "UPDATE users SET role_id = (SELECT role_id FROM roles WHERE role_name = %s) "
+            "WHERE user_id = %s",
+            (role, user_id),
+        )
+
+    return _set
+
+
+@pytest.fixture
 def user_with_role(
-    register: Callable[..., dict[str, Any]], run_sql: Callable[..., list[dict[str, Any]]]
+    register: Callable[..., dict[str, Any]], set_role: Callable[[int, str], None]
 ) -> Callable[[str], dict[str, Any]]:
     """Register a user and set their role directly, since the API can't promote anyone yet."""
 
     def _make(role: str) -> dict[str, Any]:
         user = register(f"{role}@acme.inc", f"Test {role.title()}")
-        run_sql("UPDATE users SET role = %s WHERE user_id = %s", (role, user["user_id"]))
+        set_role(user["user_id"], role)
         return {**user, "role": role}
 
     return _make

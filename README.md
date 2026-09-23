@@ -94,6 +94,7 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_health_and_errors.py` | Health checks, domain errors → 400/401/404/409, generic JSON 500 |
 | `test_tokens.py` | Signing and verifying access tokens: expiry, tampering, unsigned tokens, the `JWT_SECRET` rules (no DB) |
 | `test_auth.py`, `test_locations.py` | Register, login, Bearer tokens (missing, invalid, expired, deleted user, changed role), location lookups |
+| `test_roles.py` | The `roles` table: new users get `employee`, unknown roles are rejected, and `schema.sql` moves an older database's `users.role` text into `role_id` |
 | `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); shared routes work for every role |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 
@@ -314,6 +315,6 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
-- Only the employee side is built. Engineers and facility admins sign in to their own start pages (`/engineer`, `/admin`), which are placeholders for now: their endpoints (assigning, changing status, blocking, closing) don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set `role` in the `users` table directly.
+- Only the employee side is built. Engineers and facility admins sign in to their own start pages (`/engineer`, `/admin`), which are placeholders for now: their endpoints (assigning, changing status, blocking, closing) don't exist yet, and tests stand in for them with SQL. No API can promote a user yet either; set their `role_id` in the `users` table directly, to one of the rows in `roles` (`employee`, `engineer`, `admin`).
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.

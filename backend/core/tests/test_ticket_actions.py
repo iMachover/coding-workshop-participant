@@ -40,10 +40,10 @@ def test_add_note_bumps_ticket_updated_at(client, api, jane, ticket, run_sql) ->
 
 
 def test_notes_are_listed_oldest_first_with_authors(
-    client, api, jane, ticket, register, run_sql
+    client, api, jane, ticket, register, set_role, run_sql
 ) -> None:
     sam = register("sam@acme.inc", "Sam Tech")
-    run_sql("UPDATE users SET role = 'engineer' WHERE user_id = %s", (sam["user_id"],))
+    set_role(sam["user_id"], "engineer")
     url = f"{api}/tickets/{ticket['ticket_id']}/notes"
     client.post(url, json={"note_text": "first"}, headers=jane)
     run_sql(
