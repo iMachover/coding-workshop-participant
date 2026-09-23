@@ -1,25 +1,15 @@
 {
   "info": {
     "name": "Facilities Helpdesk API (core)",
-    "description": "Every route of the core service. Run the whole collection top to bottom: each request saves the ids the next ones need (userId, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is the dev-only `X-User-Id` header, set once at collection level from `{{userId}}`. Full reference: postman_testing.md.",
+    "description": "Every route of the core service. Run the whole collection top to bottom: each request saves what the next ones need (accessToken, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is `Authorization: Bearer {{accessToken}}`, set once at collection level; **Login** saves the token. Full reference: postman_testing.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
-    "type": "apikey",
-    "apikey": [
+    "type": "bearer",
+    "bearer": [
       {
-        "key": "key",
-        "value": "X-User-Id",
-        "type": "string"
-      },
-      {
-        "key": "value",
-        "value": "{{userId}}",
-        "type": "string"
-      },
-      {
-        "key": "in",
-        "value": "header",
+        "key": "token",
+        "value": "{{accessToken}}",
         "type": "string"
       }
     ]
@@ -67,8 +57,9 @@
       "type": "string"
     },
     {
-      "key": "otherUserId",
-      "value": ""
+      "key": "otherAccessToken",
+      "value": "",
+      "type": "string"
     },
     {
       "key": "buildingId",
@@ -339,7 +330,7 @@
                 "register"
               ]
             },
-            "description": "A second employee, used to check that one user can't read another's tickets.",
+            "description": "A second employee, used to check that one user can't read another's tickets. **Login - second user** signs them in.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"full_name\": \"Other Tester\",\n  \"password\": \"{{password}}\"\n}",
@@ -368,8 +359,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "pm.collectionVariables.set('otherUserId', pm.response.json().user_id);"
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
                 ]
               }
             }
@@ -473,13 +463,62 @@
                   "});",
                   "pm.test('User shape, no password', () => pm.expect(body.user).to.have.all.keys('user_id', 'email', 'full_name', 'phone_number', 'role', 'created_at'));",
                   "pm.test('Token holds only id, role and timing', () => {",
-                  "  const claims = JSON.parse(atob(body.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "  const claims = JSON.parse(require('atob')(body.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
                   "  pm.expect(claims).to.have.all.keys('sub', 'role', 'iat', 'exp', 'iss');",
                   "  pm.expect(claims.sub).to.eql(String(body.user.user_id));",
                   "  pm.expect(claims.role).to.eql(body.user.role);",
                   "});",
                   "pm.collectionVariables.set('userId', body.user.user_id);",
                   "pm.collectionVariables.set('accessToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - second user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Signs in the second user. Saves `{{otherAccessToken}}`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Is the second user', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('otherEmail')));",
+                  "pm.collectionVariables.set('otherAccessToken', body.access_token);"
                 ]
               }
             }
@@ -500,7 +539,7 @@
                 "me"
               ]
             },
-            "description": "Returns the user identified by X-User-Id."
+            "description": "Returns the user the Bearer token belongs to, reloaded from the database."
           },
           "event": [
             {
@@ -516,7 +555,7 @@
           ]
         },
         {
-          "name": "Current user - missing header (401)",
+          "name": "Current user - missing token (401)",
           "request": {
             "method": "GET",
             "header": [],
@@ -530,7 +569,7 @@
                 "me"
               ]
             },
-            "description": "",
+            "description": "No Authorization header.",
             "auth": {
               "type": "noauth"
             }
@@ -542,14 +581,52 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 401', () => pm.response.to.have.status(401));",
-                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Missing or invalid X-User-Id header'));"
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Please sign in to continue.'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Current user - unknown user (401)",
+          "name": "Current user - old X-User-Id header (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{userId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "The dev-only X-User-Id header was removed; on its own it no longer signs anyone in.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Please sign in to continue.'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user - invalid token (401)",
           "request": {
             "method": "GET",
             "header": [],
@@ -563,23 +640,13 @@
                 "me"
               ]
             },
-            "description": "",
+            "description": "A Bearer value that isn't a JWT.",
             "auth": {
-              "type": "apikey",
-              "apikey": [
+              "type": "bearer",
+              "bearer": [
                 {
-                  "key": "key",
-                  "value": "X-User-Id",
-                  "type": "string"
-                },
-                {
-                  "key": "value",
-                  "value": "{{missingId}}",
-                  "type": "string"
-                },
-                {
-                  "key": "in",
-                  "value": "header",
+                  "key": "token",
+                  "value": "not-a-jwt",
                   "type": "string"
                 }
               ]
@@ -592,7 +659,61 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 401', () => pm.response.to.have.status(401));",
-                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Unknown user'));"
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Invalid token. Please sign in again.'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user - tampered token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "The real token with its role changed to admin. The signature no longer matches, so it's rejected.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tamperedToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Rewrite the payload (the middle part) and keep the original signature.",
+                  "const [header, payload, signature] = pm.collectionVariables.get('accessToken').split('.');",
+                  "const fromB64Url = (s) => require('atob')(s.replace(/-/g, '+').replace(/_/g, '/'));",
+                  "const toB64Url = (s) => require('btoa')(s).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "const claims = { ...JSON.parse(fromB64Url(payload)), role: 'admin' };",
+                  "pm.variables.set('tamperedToken', [header, toB64Url(JSON.stringify(claims)), signature].join('.'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message', () => pm.expect(pm.response.json().detail).to.eql('Invalid token. Please sign in again.'));"
                 ]
               }
             }
@@ -1104,21 +1225,11 @@
             },
             "description": "Someone else's ticket is 404, not 403, so its existence isn't revealed.",
             "auth": {
-              "type": "apikey",
-              "apikey": [
+              "type": "bearer",
+              "bearer": [
                 {
-                  "key": "key",
-                  "value": "X-User-Id",
-                  "type": "string"
-                },
-                {
-                  "key": "value",
-                  "value": "{{otherUserId}}",
-                  "type": "string"
-                },
-                {
-                  "key": "in",
-                  "value": "header",
+                  "key": "token",
+                  "value": "{{otherAccessToken}}",
                   "type": "string"
                 }
               ]

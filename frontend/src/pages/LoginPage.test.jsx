@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { ApiError } from '../services/apiClient'
 import { login } from '../services/authService'
-import { getStoredUser } from '../services/session'
-import { JANE, renderWithProviders } from '../test/renderWithProviders'
+import { getSession } from '../services/session'
+import { JANE, renderWithProviders, TEST_TOKEN } from '../test/renderWithProviders'
+
+const SESSION = { token: TEST_TOKEN, user: JANE }
 
 vi.mock('../services/authService', () => ({ login: vi.fn(), register: vi.fn() }))
 
@@ -72,7 +74,7 @@ describe('LoginPage', () => {
   })
 
   it('signs in, remembers the user and opens the dashboard', async () => {
-    vi.mocked(login).mockResolvedValue(JANE)
+    vi.mocked(login).mockResolvedValue(SESSION)
     const user = renderPage()
 
     await signInAs(user)
@@ -80,11 +82,11 @@ describe('LoginPage', () => {
     expect(login).toHaveBeenCalledWith({ email: 'jane@acme.inc', password: 'password123' })
     expect(await screen.findByRole('heading', { level: 1, name: 'My dashboard' })).toBeInTheDocument()
     expect(screen.getByText('Jane Doe')).toBeInTheDocument()
-    expect(getStoredUser()).toEqual(JANE)
+    expect(getSession()).toEqual(SESSION)
   })
 
   it('returns to the page that asked for sign-in', async () => {
-    vi.mocked(login).mockResolvedValue(JANE)
+    vi.mocked(login).mockResolvedValue(SESSION)
     const user = renderPage('/dashboard')
     expect(screen.getByRole('alert')).toHaveTextContent('Please sign in to continue.')
 
@@ -103,7 +105,7 @@ describe('LoginPage', () => {
     expect(submitButton()).toBeDisabled()
     expect(submitButton()).toHaveTextContent('Signing in…')
     expect(emailField()).toBeDisabled()
-    finish(JANE)
+    finish(SESSION)
     await screen.findByRole('heading', { level: 1, name: 'My dashboard' })
   })
 
@@ -116,7 +118,7 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password'))
     expect(screen.queryByText('Please sign in to continue.')).not.toBeInTheDocument()
     expect(submitButton()).toBeEnabled()
-    expect(getStoredUser()).toBeNull()
+    expect(getSession()).toBeNull()
   })
 
   it('never shows raw JavaScript errors', async () => {

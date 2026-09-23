@@ -7,7 +7,7 @@ import { AuthContext } from './AuthContext'
  * @returns {{
  *   user: object | null,
  *   notice: string | null,
- *   signIn: (user: object) => void,
+ *   signIn: (session: {token: string, user: object}) => void,
  *   signOut: (message?: string) => void,
  * }}
  */

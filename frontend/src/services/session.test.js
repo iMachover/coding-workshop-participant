@@ -1,24 +1,33 @@
 import { describe, expect, it } from 'vitest'
 
-import { clearStoredUser, getStoredUser, storeUser } from './session'
+import { clearSession, getSession, storeSession } from './session'
 
-describe('dev-only session', () => {
-  it('stores, reads and clears the user', () => {
-    expect(getStoredUser()).toBeNull()
+const SESSION = { token: 'aaa.bbb.ccc', user: { user_id: 3, full_name: 'Eve' } }
 
-    storeUser({ user_id: 3, full_name: 'Eve' })
-    expect(getStoredUser()).toEqual({ user_id: 3, full_name: 'Eve' })
+describe('session', () => {
+  it('stores, reads and clears the token and user', () => {
+    expect(getSession()).toBeNull()
 
-    clearStoredUser()
-    expect(getStoredUser()).toBeNull()
+    storeSession(SESSION)
+    expect(getSession()).toEqual(SESSION)
+
+    clearSession()
+    expect(getSession()).toBeNull()
   })
 
   it.each([
     ['not json', '{oops'],
-    ['missing user_id', '{"full_name":"Eve"}'],
-    ['non-integer user_id', '{"user_id":"3"}'],
+    ['no token', JSON.stringify({ user: { user_id: 3 } })],
+    ['not a JWT', JSON.stringify({ token: 'just-a-string', user: { user_id: 3 } })],
+    ['no user', JSON.stringify({ token: 'aaa.bbb.ccc' })],
+    ['non-integer user_id', JSON.stringify({ token: 'aaa.bbb.ccc', user: { user_id: '3' } })],
   ])('ignores a corrupted value (%s)', (_label, raw) => {
-    localStorage.setItem('helpdesk.devSession', raw)
-    expect(getStoredUser()).toBeNull()
+    localStorage.setItem('helpdesk.session', raw)
+    expect(getSession()).toBeNull()
+  })
+
+  it('ignores the old dev-only session from before tokens', () => {
+    localStorage.setItem('helpdesk.devSession', JSON.stringify({ user_id: 3, full_name: 'Eve' }))
+    expect(getSession()).toBeNull()
   })
 })

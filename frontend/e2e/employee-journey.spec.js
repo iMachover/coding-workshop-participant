@@ -11,6 +11,12 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
   const email = uniqueEmail('jordan')
   const title = `Desk lamp flickers ${Date.now()}`
 
+  // How the browser identifies itself on every protected API call.
+  const authHeaders = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/core/tickets')) authHeaders.push(request.headers())
+  })
+
   // Every tickets API response the browser gets, to check what the employee receives.
   const ticketResponses = []
   page.on('response', async (response) => {
@@ -110,6 +116,14 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
     await page.goto('/dashboard')
     await expect(page).toHaveURL(/\/login$/)
     await expect(page.getByRole('alert')).toHaveText('Please sign in to continue.')
+  })
+
+  await test.step('every tickets call sent a Bearer token, never X-User-Id', async () => {
+    expect(authHeaders.length).toBeGreaterThan(5)
+    for (const headers of authHeaders) {
+      expect(headers.authorization).toMatch(/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/)
+      expect(headers).not.toHaveProperty('x-user-id')
+    }
   })
 
   await test.step('no tickets response ever carried a priority', async () => {

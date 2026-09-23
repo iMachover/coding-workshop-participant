@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError, onUnauthorized, toApiError } from './apiClient'
-import { storeUser } from './session'
+import { storeSession } from './session'
+
+const session = (userId = 7) => ({ token: 'aaa.bbb.ccc', user: { user_id: userId } })
 
 function mockFetch(status, body) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -45,15 +47,17 @@ describe('requests', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/core/tickets?view=active&q=wi+fi')
   })
 
-  it('sends X-User-Id only when a dev session exists', async () => {
+  it('sends the token as a Bearer header only when signed in', async () => {
     const fetchMock = mockFetch(200, {})
 
     await api.get('/auth/me')
-    expect(fetchMock.mock.calls[0][1].headers['X-User-Id']).toBeUndefined()
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined()
 
-    storeUser({ user_id: 7, full_name: 'Jane' })
+    storeSession(session())
     await api.get('/auth/me')
-    expect(fetchMock.mock.calls[1][1].headers['X-User-Id']).toBe('7')
+    const headers = fetchMock.mock.calls[1][1].headers
+    expect(headers.Authorization).toBe('Bearer aaa.bbb.ccc')
+    expect(headers).not.toHaveProperty('X-User-Id')
   })
 
   it('returns null for 204 No Content', async () => {
@@ -130,7 +134,7 @@ describe('errors', () => {
     await api.post('/auth/login', {}).catch(() => {})
     expect(handler).not.toHaveBeenCalled()
 
-    storeUser({ user_id: 99 })
+    storeSession(session(99))
     await api.get('/auth/me').catch(() => {})
     expect(handler).toHaveBeenCalledTimes(1)
 
@@ -145,7 +149,7 @@ describe('errors', () => {
     const stopOlder = onUnauthorized(older)
     const stopNewer = onUnauthorized(newer)
     stopOlder()
-    storeUser({ user_id: 99 })
+    storeSession(session(99))
     mockFetch(401, {})
 
     await api.get('/auth/me').catch(() => {})

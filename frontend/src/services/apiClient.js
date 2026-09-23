@@ -1,4 +1,4 @@
-import { getStoredUser } from './session'
+import { getSession } from './session'
 
 // Relative by default: CloudFront (AWS) and the Vite proxy (local) both serve the API
 // on the same origin as the app. VITE_API_URL can point somewhere else if needed.
@@ -71,7 +71,8 @@ let unauthorizedHandler = null
 
 /**
  * Register what to do when the API rejects the current session (401 on a request
- * that sent one), e.g. the user no longer exists or, later, the JWT expired.
+ * that sent a token): it expired, it was tampered with, the user no longer exists,
+ * or their role changed.
  * @param {() => void} handler
  * @returns {() => void} call to unregister
  */
@@ -90,9 +91,8 @@ export function onUnauthorized(handler) {
 export async function apiRequest(path, { method = 'GET', body, params, signal } = {}) {
   const headers = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  // DEV-ONLY identity until JWT (see session.js).
-  const user = getStoredUser()
-  if (user) headers['X-User-Id'] = String(user.user_id)
+  const session = getSession()
+  if (session) headers.Authorization = `Bearer ${session.token}`
 
   let response
   try {
@@ -110,8 +110,8 @@ export async function apiRequest(path, { method = 'GET', body, params, signal } 
   if (response.status === 204) return null
   const data = await response.json().catch(() => null)
   if (!response.ok) {
-    // A 401 without a session (e.g. a wrong password at login) is not a session problem.
-    if (response.status === 401 && user) unauthorizedHandler?.()
+    // A 401 without a token (e.g. a wrong password at login) is not a session problem.
+    if (response.status === 401 && session) unauthorizedHandler?.()
     throw toApiError(response.status, data)
   }
   return data

@@ -2,30 +2,28 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 
 import { onUnauthorized } from '../services/apiClient'
-import { clearStoredUser, getStoredUser, storeUser } from '../services/session'
+import { clearSession, getSession, storeSession } from '../services/session'
 import { AuthContext, SESSION_ENDED } from './AuthContext'
 
 /**
- * Holds the signed-in user for the whole app.
- *
- * DEV-ONLY: the "session" is the user object in localStorage (see services/session.js),
- * sent to the API as X-User-Id. It is not real authentication; JWT will replace it
- * without changing this component's interface.
+ * Holds the signed-in user for the whole app. The access token itself stays in
+ * services/session.js, where apiClient reads it for every request.
  */
 function AuthProvider({ children }) {
-  const [user, setUser] = useState(getStoredUser)
+  const [user, setUser] = useState(() => getSession()?.user ?? null)
   // Why the last sign-out happened, for the sign-in page. Kept here rather than in
   // navigation state, because protected routes also redirect on sign-out.
   const [notice, setNotice] = useState(null)
 
-  const signIn = useCallback((signedInUser) => {
-    storeUser(signedInUser)
-    setUser(signedInUser)
+  /** @param {{token: string, user: object}} session from authService.login */
+  const signIn = useCallback((session) => {
+    storeSession(session)
+    setUser(session.user)
     setNotice(null)
   }, [])
 
   const signOut = useCallback((message = null) => {
-    clearStoredUser()
+    clearSession()
     setUser(null)
     setNotice(message)
   }, [])

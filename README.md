@@ -61,7 +61,7 @@ Frontend code lives in `frontend/src/`:
 | `pages/` | One component per route |
 | `components/` | Shared UI: app header and layout, route guards, `ErrorState`; `dashboard/` and `tickets/` hold feature pieces |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
-| `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the session. **Dev-only session** (see Known limitations). |
+| `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
 | `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts, and the workflow (Blocked is a side state off In Progress, not a step) |
 | `frontend/e2e/` (outside `src/`) | Playwright end-to-end tests (see Testing) |
@@ -92,7 +92,9 @@ Each run rebuilds the test schema from `sql/`, and every test starts with no use
 | `test_security.py`, `test_schemas.py` | Password hashing and request validation (no DB) |
 | `test_db.py` | Commit, rollback, connection reuse and reconnecting after a dropped connection |
 | `test_health_and_errors.py` | Health checks, domain errors → 400/401/404/409, generic JSON 500 |
-| `test_auth.py`, `test_locations.py` | Register, login, `X-User-Id`, location lookups |
+| `test_tokens.py` | Signing and verifying access tokens: expiry, tampering, unsigned tokens, the `JWT_SECRET` rules (no DB) |
+| `test_auth.py`, `test_locations.py` | Register, login, Bearer tokens (missing, invalid, expired, deleted user, changed role), location lookups |
+| `test_rbac.py` | Every non-public route needs sign-in (read from the app's routes, so new ones are covered); `/tickets` is employee-only (403 for engineers and admins); shared routes work for every role |
 | `test_tickets.py`, `test_ticket_actions.py` | Create, list/filter/search, details, notes, escalation, and one employee never seeing another's tickets |
 
 CI runs `bandit -r ./backend`. `backend/.bandit` skips `tests/` folders there, since tests use `assert` and fake passwords on purpose.
@@ -160,7 +162,7 @@ curl -X POST http://localhost:8000/api/core/auth/register -H 'Content-Type: appl
 # Same email again: 409. Non-acme email or short password: 422.
 ```
 
-Log in. The response has a signed access token (valid for 1 hour) and the user. Until the next step, protected routes still read the `user.user_id` from it as the `X-User-Id` header.
+Log in. The response has a signed access token (valid for 1 hour) and the user.
 
 ```sh
 curl -X POST http://localhost:8000/api/core/auth/login -H 'Content-Type: application/json' \
@@ -169,30 +171,45 @@ curl -X POST http://localhost:8000/api/core/auth/login -H 'Content-Type: applica
 # Wrong email or password: 401 {"detail":"Invalid email or password"}
 ```
 
-Who am I? Every protected route reads the caller from `X-User-Id`.
+Every other route needs that token as `Authorization: Bearer <token>`. Save it in a shell variable so the examples below can use it:
 
 ```sh
-curl http://localhost:8000/api/core/auth/me -H 'X-User-Id: 1'
-# 200 {"user_id":1,"email":"jane.doe@acme.inc",...}
-# Missing, non-numeric or unknown id: 401
+TOKEN=$(curl -s -X POST http://localhost:8000/api/core/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"jane.doe@acme.inc","password":"hunter2hunter2"}' \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"])')
 ```
 
-Locations for the create-ticket dropdowns (Building → Floor → Seat). All need `X-User-Id`.
+Who am I? Every protected route reads the caller from the token, then reloads them from the database.
 
 ```sh
-curl http://localhost:8000/api/core/buildings -H 'X-User-Id: 1'
+curl http://localhost:8000/api/core/auth/me -H "Authorization: Bearer $TOKEN"
+# 200 {"user_id":1,"email":"jane.doe@acme.inc",...}
+```
+
+| Problem | Status and `detail` |
+|---|---|
+| No `Authorization` header, or not `Bearer <token>` | 401 `Please sign in to continue.` |
+| Token malformed, tampered with, or signed with another secret | 401 `Invalid token. Please sign in again.` |
+| Token older than 1 hour | 401 `Your session has expired. Please sign in again.` |
+| The account was deleted, or its role changed since sign-in | 401 `Unknown user` / `Your access has changed. Please sign in again.` |
+| Valid token, but the role may not use the route (engineers and admins on `/tickets`) | 403 `You don't have access to this.` |
+
+Locations for the create-ticket dropdowns (Building → Floor → Seat). Any signed-in role may read them.
+
+```sh
+curl http://localhost:8000/api/core/buildings -H "Authorization: Bearer $TOKEN"
 # [{"building_id":1,"building_name":"Building A"},...]
-curl http://localhost:8000/api/core/buildings/1/floors -H 'X-User-Id: 1'
+curl http://localhost:8000/api/core/buildings/1/floors -H "Authorization: Bearer $TOKEN"
 # [{"floor_id":1,"floor_number":1,"building_id":1},...]
-curl http://localhost:8000/api/core/floors/3/seats -H 'X-User-Id: 1'
+curl http://localhost:8000/api/core/floors/3/seats -H "Authorization: Bearer $TOKEN"
 # [{"seat_id":3,"seat_number":"301","floor_id":3},...]
 # Unknown building or floor: 404. Non-numeric id: 422.
 ```
 
-Create a ticket. The server sets `status` to `open` and the creator from `X-User-Id`. It also stores an internal `priority` from `affected_scope` (building → P1, floor → P2, me → P3) for engineers and admins; employee responses never include it.
+Create a ticket (employees only). The server sets `status` to `open` and the creator from the token. It also stores an internal `priority` from `affected_scope` (building → P1, floor → P2, me → P3) for engineers and admins; employee responses never include it.
 
 ```sh
-curl -X POST http://localhost:8000/api/core/tickets -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8000/api/core/tickets -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"title":"Wi-Fi keeps dropping","short_description":"Disconnects every few minutes",
        "description":"Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
        "category":"network","urgency":"medium","affected_scope":"me",
@@ -209,9 +226,9 @@ curl -X POST http://localhost:8000/api/core/tickets -H 'X-User-Id: 1' -H 'Conten
 List my tickets, most recently updated first. Only the caller's own tickets are returned, with building name and floor/seat numbers filled in.
 
 ```sh
-curl 'http://localhost:8000/api/core/tickets' -H 'X-User-Id: 1'
-curl 'http://localhost:8000/api/core/tickets?view=active&urgency=high' -H 'X-User-Id: 1'
-curl 'http://localhost:8000/api/core/tickets?q=printer' -H 'X-User-Id: 1'
+curl 'http://localhost:8000/api/core/tickets' -H "Authorization: Bearer $TOKEN"
+curl 'http://localhost:8000/api/core/tickets?view=active&urgency=high' -H "Authorization: Bearer $TOKEN"
+curl 'http://localhost:8000/api/core/tickets?q=printer' -H "Authorization: Bearer $TOKEN"
 ```
 
 | Query param | Values |
@@ -226,7 +243,7 @@ Filters combine with AND. An unknown value, or an unknown parameter such as `pri
 Ticket details: the full ticket plus `building_name`, `floor_number`, `seat_number` and `assigned_to_name`.
 
 ```sh
-curl http://localhost:8000/api/core/tickets/1 -H 'X-User-Id: 1'
+curl http://localhost:8000/api/core/tickets/1 -H "Authorization: Bearer $TOKEN"
 # 200 {"ticket_id":1,...,"building_name":"Building A","floor_number":3,"seat_number":"301","assigned_to_name":"Sam Tech"}
 # Someone else's ticket, or one that doesn't exist: 404 {"detail":"Ticket not found"}
 ```
@@ -234,9 +251,9 @@ curl http://localhost:8000/api/core/tickets/1 -H 'X-User-Id: 1'
 Notes. Adding one also moves the ticket's `updated_at` forward, so it rises to the top of the list.
 
 ```sh
-curl http://localhost:8000/api/core/tickets/1/notes -H 'X-User-Id: 1'
+curl http://localhost:8000/api/core/tickets/1/notes -H "Authorization: Bearer $TOKEN"
 # 200 [{"note_id":2,"author_name":"Sam Tech","author_role":"engineer","note_text":"...",...},...] oldest first
-curl -X POST http://localhost:8000/api/core/tickets/1/notes -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8000/api/core/tickets/1/notes -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"note_text":"Thanks, I will be at my desk after 2pm."}'
 # 201 {"note_id":3,...}. Closed ticket: 409. Blank note: 422. Not your ticket: 404.
 ```
@@ -244,7 +261,7 @@ curl -X POST http://localhost:8000/api/core/tickets/1/notes -H 'X-User-Id: 1' -H
 Request escalation. It flags the ticket for Facility Admin review and returns the updated ticket.
 
 ```sh
-curl -X POST http://localhost:8000/api/core/tickets/5/escalation -H 'X-User-Id: 1' -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8000/api/core/tickets/5/escalation -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"reason":"Whole floor can not print payroll docs, due today."}'
 # 200 {"ticket_id":5,...,"escalation_requested":true,"escalation_reason":"Whole floor can not print..."}
 # Already escalated or closed: 409. Blank reason: 422. Not your ticket: 404.
@@ -284,7 +301,7 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 ## Known limitations
 
-- **Sign-in is temporary and dev-only. It is not real authentication.** Login returns the user, the frontend keeps it in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)), and every request sends its id as the `X-User-Id` header. Anyone can send any id. JWT will replace this: only `session.js`, `apiClient.js` and the backend's `deps.get_current_user` need to change.
+- **Access tokens in `localStorage`.** The frontend keeps its signed JWT (1 hour, no refresh tokens) in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)) and sends it as `Authorization: Bearer <token>`. A token there could be read by an injected script (XSS); React's output escaping and the short expiry limit that risk.
 - List endpoints return every matching record, with no pagination yet.
 - Only the employee side exists. Engineer and facility-admin screens and endpoints (assigning, changing status, blocking, closing) are not built yet; tests stand in for them with SQL.
 - Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. Engineer and admin endpoints that use priority don't exist yet.

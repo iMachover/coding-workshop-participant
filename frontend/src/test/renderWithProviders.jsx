@@ -4,7 +4,7 @@ import { Context as ResponsiveContext } from 'react-responsive'
 import { MemoryRouter } from 'react-router'
 
 import AuthProvider from '../auth/AuthProvider'
-import { storeUser } from '../services/session'
+import { storeSession } from '../services/session'
 import theme from '../theme'
 
 export const JANE = {
@@ -16,6 +16,9 @@ export const JANE = {
   created_at: '2026-09-22T20:21:06-04:00',
 }
 
+/** A token-shaped placeholder; unit tests mock the API, so it is never verified. */
+export const TEST_TOKEN = 'test.header.token'
+
 /**
  * Render with the app's theme, router and auth, at a chosen URL and screen width.
  * @param {import('react').ReactElement} ui
@@ -23,7 +26,7 @@ export const JANE = {
  *   width 375 = phone, 1280 = desktop; user = start signed in as this user
  */
 export function renderWithProviders(ui, { route = '/', width = 1280, user } = {}) {
-  if (user) storeUser(user)
+  if (user) storeSession({ token: TEST_TOKEN, user })
   return render(
     <ResponsiveContext.Provider value={{ width }}>
       <ThemeProvider theme={theme}>

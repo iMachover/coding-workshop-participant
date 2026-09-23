@@ -1,14 +1,15 @@
 import { api } from './apiClient'
 
 /**
- * Check credentials. Resolves with the user (including user_id); rejects with
- * ApiError 401 "Invalid email or password" on a wrong email or password.
- * The API also returns an access token, which is not used yet (see J3).
+ * Check credentials. Resolves with the session to store: the signed access token and
+ * the user. Rejects with ApiError 401 "Invalid email or password" on a wrong email or
+ * password.
  * @param {{email: string, password: string}} credentials
+ * @returns {Promise<{token: string, user: object}>}
  */
 export async function login({ email, password }) {
-  const { user } = await api.post('/auth/login', { email: email.trim(), password })
-  return user
+  const body = await api.post('/auth/login', { email: email.trim(), password })
+  return { token: body.access_token, user: body.user }
 }
 
 /**

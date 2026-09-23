@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { SESSION_ENDED } from './auth/AuthContext'
 import { api } from './services/apiClient'
-import { getStoredUser } from './services/session'
+import { getSession } from './services/session'
 import { JANE, renderWithProviders } from './test/renderWithProviders'
 
 // The dashboard loads tickets on arrival; these tests only care about routing and sign-in.
@@ -71,7 +71,7 @@ describe('header', () => {
 
     expect(heading()).toHaveTextContent('Sign in')
     expect(screen.getByRole('alert')).toHaveTextContent("You've signed out.")
-    expect(getStoredUser()).toBeNull()
+    expect(getSession()).toBeNull()
     expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument()
   })
 

@@ -46,11 +46,13 @@ test('forms explain problems before and after reaching the API', async ({ page, 
   await expect(page.getByRole('alert')).toHaveText('Invalid email or password')
 })
 
-test('a stale session is signed out with an explanation', async ({ page }) => {
+test('a forged or stale token is signed out with an explanation', async ({ page }) => {
   await page.goto('/login')
-  await page.evaluate(() =>
-    localStorage.setItem('helpdesk.devSession', JSON.stringify({ user_id: 987654, full_name: 'Ghost' })),
-  )
+  // Token-shaped, but not signed by the server: the API must reject it with 401.
+  const forged = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxIiwicm9sZSI6ImFkbWluIn0', 'bm90LWEtcmVhbC1zaWduYXR1cmU']
+  await page.evaluate((token) =>
+    localStorage.setItem('helpdesk.session', JSON.stringify({ token, user: { user_id: 1, full_name: 'Ghost' } })),
+  forged.join('.'))
 
   await page.goto('/dashboard')
 

@@ -153,29 +153,12 @@ def test_a_token_stops_working_when_the_role_changes(client, api, jane, jane_use
     assert response.json() == {"detail": ROLE_CHANGED}
 
 
-# --- TRANSITIONAL (J3): the X-User-Id fallback. Deleted with it in J3 step 4. ---------
-
-
-def test_transitional_bearer_token_wins_over_x_user_id(client, api, jane, eve_user) -> None:
-    response = client.get(f"{api}/auth/me", headers={**jane, "X-User-Id": str(eve_user["user_id"])})
-    assert response.json()["email"] == "jane@acme.inc"
-
-
-@pytest.mark.parametrize(
-    ("x_user_id", "status", "detail"),
-    [
-        ("abc", 401, MISSING_TOKEN),
-        ("0", 401, MISSING_TOKEN),
-        ("99999999999999", 401, MISSING_TOKEN),
-        ("999", 401, "Unknown user"),
-    ],
-)
-def test_transitional_x_user_id_is_still_checked(client, api, x_user_id, status, detail) -> None:
-    response = client.get(f"{api}/auth/me", headers={"X-User-Id": x_user_id})
-    assert response.status_code == status
-    assert response.json() == {"detail": detail}
-
-
-def test_transitional_x_user_id_still_identifies_the_caller(client, api, jane_user) -> None:
+def test_the_old_x_user_id_header_no_longer_signs_anyone_in(client, api, jane_user) -> None:
     response = client.get(f"{api}/auth/me", headers={"X-User-Id": str(jane_user["user_id"])})
+    assert response.status_code == 401
+    assert response.json() == {"detail": MISSING_TOKEN}
+
+
+def test_x_user_id_is_ignored_next_to_a_bearer_token(client, api, jane, eve_user) -> None:
+    response = client.get(f"{api}/auth/me", headers={**jane, "X-User-Id": str(eve_user["user_id"])})
     assert response.json()["email"] == "jane@acme.inc"

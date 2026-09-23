@@ -39,7 +39,7 @@ frontend/
 │   ├── pages/            # One component per route
 │   ├── components/       # Shared UI; dashboard/ and tickets/ hold feature pieces
 │   ├── services/         # API calls. apiClient.js is the only place that uses fetch
-│   ├── auth/             # AuthProvider + useAuth (dev-only X-User-Id session)
+│   ├── auth/             # AuthProvider + useAuth: the signed-in user; token in services/session.js
 │   ├── hooks/            # useApiData, useMyTickets, useDebouncedValue, useIsMobile
 │   ├── utils/            # Validation, labels and formatting, workflow and stats helpers
 │   ├── test/             # Test setup, fixtures, renderWithProviders

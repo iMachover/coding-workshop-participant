@@ -16,11 +16,20 @@ export async function registerViaApi(request, { name = 'E2E Employee', email = u
   return response.json()
 }
 
+/** Sign in through the API and return the Authorization header for that user. */
+export async function signInViaApi(request, email, password = PASSWORD) {
+  const response = await request.post('/api/core/auth/login', { data: { email, password } })
+  expect(response.status()).toBe(200)
+  const { access_token: accessToken } = await response.json()
+  return { Authorization: `Bearer ${accessToken}` }
+}
+
 /** Create a building-wide ticket in Building A through the API, as the given user. */
 export async function createTicketViaApi(request, user, overrides = {}) {
-  const buildings = await (await request.get('/api/core/buildings', { headers: { 'X-User-Id': String(user.user_id) } })).json()
+  const headers = await signInViaApi(request, user.email)
+  const buildings = await (await request.get('/api/core/buildings', { headers })).json()
   const response = await request.post('/api/core/tickets', {
-    headers: { 'X-User-Id': String(user.user_id) },
+    headers,
     data: {
       title: 'Lobby door sticks',
       short_description: 'Hard to open',

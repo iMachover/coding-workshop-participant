@@ -1,36 +1,41 @@
 /**
- * DEV-ONLY SESSION: THIS IS NOT REAL AUTHENTICATION.
+ * The signed-in session: the access token from POST /auth/login, plus the user it
+ * belongs to (for showing their name without an extra request).
  *
- * The signed-in user is kept in localStorage, and apiClient sends its user_id as the
- * X-User-Id header. Anyone can edit localStorage or send any X-User-Id, so this only
- * identifies the caller during development. JWT will replace this module: store the
- * token here instead, and apiClient will send it as an Authorization header.
+ * Kept in localStorage so it survives reloads and new tabs. The token is a signed JWT
+ * that expires after an hour; the API checks it on every request, so a copied or
+ * edited value can't grant anything the server hasn't signed. apiClient sends it as
+ * `Authorization: Bearer <token>`.
  */
 
-const STORAGE_KEY = 'helpdesk.devSession'
+const STORAGE_KEY = 'helpdesk.session'
+
+/** Three base64url parts separated by dots. Only a shape check; the API verifies it. */
+const JWT_SHAPE = /^[\w-]+\.[\w-]+\.[\w-]+$/
 
 /**
- * Return the stored user, or null if there is none or it can't be read.
- * @returns {{user_id: number} | null}
+ * The stored session, or null if there is none or it can't be read.
+ * @returns {{token: string, user: {user_id: number}} | null}
  */
-export function getStoredUser() {
+export function getSession() {
   try {
-    const user = JSON.parse(localStorage.getItem(STORAGE_KEY))
-    return Number.isInteger(user?.user_id) ? user : null
+    const session = JSON.parse(localStorage.getItem(STORAGE_KEY))
+    const valid = JWT_SHAPE.test(session?.token) && Number.isInteger(session?.user?.user_id)
+    return valid ? session : null
   } catch {
     return null
   }
 }
 
 /**
- * Remember the signed-in user.
- * @param {{user_id: number}} user
+ * Remember the signed-in session.
+ * @param {{token: string, user: object}} session
  */
-export function storeUser(user) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+export function storeSession(session) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
 }
 
-/** Forget the signed-in user. */
-export function clearStoredUser() {
+/** Forget the session (sign out). */
+export function clearSession() {
   localStorage.removeItem(STORAGE_KEY)
 }

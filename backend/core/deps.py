@@ -9,7 +9,7 @@ answers 403 for any other role. Every role check lives here.
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from fastapi import Depends, Header, Path
+from fastapi import Depends, Path
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from errors import ForbiddenError, UnauthorizedError
@@ -29,22 +29,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    # TRANSITIONAL (J3): the old dev-only header, until the frontend and Postman send
-    # tokens. Removed in J3 step 4. A Bearer token always wins over it.
-    x_user_id: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
     """Return the signed-in caller, or raise UnauthorizedError (401)."""
-    if credentials is not None:
-        return auth_service.user_from_token(credentials.credentials)
-    if x_user_id is None:
+    if credentials is None:
         raise UnauthorizedError(MISSING_TOKEN)
-    try:
-        user_id = int(x_user_id)
-    except ValueError:
-        raise UnauthorizedError(MISSING_TOKEN) from None
-    if not 1 <= user_id <= MAX_DB_ID:
-        raise UnauthorizedError(MISSING_TOKEN)
-    return auth_service.get_current_user(user_id)
+    return auth_service.user_from_token(credentials.credentials)
 
 
 CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
