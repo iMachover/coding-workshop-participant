@@ -17,6 +17,14 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
+// React reports bad props, missing keys and similar bugs through console.error.
+// Fail the test instead of letting them scroll by.
+const originalConsoleError = console.error
+console.error = (...args) => {
+  originalConsoleError(...args)
+  throw new Error(`console.error was called: ${String(args[0]).slice(0, 200)}`)
+}
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
