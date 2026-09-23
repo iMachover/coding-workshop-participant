@@ -10,6 +10,9 @@ import { JANE, renderWithProviders } from '../test/renderWithProviders'
 
 vi.mock('../services/authService', () => ({ login: vi.fn(), register: vi.fn() }))
 
+// The dashboard loads tickets on arrival; these tests only care about routing and sign-in.
+vi.mock('../services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
+
 const emailField = () => screen.getByLabelText(/^Work email/)
 const passwordField = () => screen.getByLabelText(/^Password/)
 const submitButton = () => screen.getByRole('button', { name: /sign in|signing in/i })

@@ -18,6 +18,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
+    // Full-form tests click through many MUI menus; with coverage on and every file
+    // running in parallel, a few exceed the 5s default.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,jsx}'],

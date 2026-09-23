@@ -59,10 +59,11 @@ Frontend code lives in `frontend/src/`:
 | Folder / file | Holds |
 |---|---|
 | `pages/` | One component per route |
-| `components/` | Shared UI (app header, layout) |
+| `components/` | Shared UI: app header and layout, route guards, `ErrorState`; `dashboard/` and `tickets/` hold feature pieces |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the session. **Dev-only session** (see Known limitations). |
-| `hooks/` | Shared hooks, e.g. `useIsMobile` (react-responsive) |
+| `hooks/` | `useIsMobile` (react-responsive), `useMyTickets` (loads tickets, cancels outdated requests), `useDebouncedValue` (search waits 300 ms after typing) |
+| `utils/` | Pure helpers: form validation, ticket labels and formatting, dashboard counts |
 | `theme.js` | MUI theme: Citi light blue `#056DAE`, navy `#003B70` headings, white surfaces |
 
 ## Testing
@@ -262,3 +263,4 @@ See [bin/README.md](bin/README.md). The deploy scripts change real AWS resources
 
 - **Sign-in is temporary and dev-only. It is not real authentication.** Login returns the user, the frontend keeps it in `localStorage` ([frontend/src/services/session.js](frontend/src/services/session.js)), and every request sends its id as the `X-User-Id` header. Anyone can send any id. JWT will replace this: only `session.js`, `apiClient.js` and the backend's `deps.get_current_user` need to change.
 - List endpoints return every matching record, with no pagination yet.
+- Employees never see a ticket's internal **priority** in the UI; they see the urgency and impact they chose, and the status. The API responses still include `priority`, so it is visible in browser dev tools. Removing it from employee responses is a backend change for when role-based responses are added.

@@ -8,6 +8,9 @@ import { api } from './services/apiClient'
 import { getStoredUser } from './services/session'
 import { JANE, renderWithProviders } from './test/renderWithProviders'
 
+// The dashboard loads tickets on arrival; these tests only care about routing and sign-in.
+vi.mock('./services/ticketService', () => ({ listMyTickets: vi.fn().mockResolvedValue([]) }))
+
 const heading = () => screen.getByRole('heading', { level: 1 })
 
 describe('routing for guests', () => {
