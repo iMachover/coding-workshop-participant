@@ -24,6 +24,18 @@ def insert(
     ).fetchone()
 
 
+def get_by_id(conn: psycopg.Connection, user_id: int) -> dict[str, Any] | None:
+    """Return the user with this id, without the password hash, or None."""
+    return conn.execute(
+        """
+        SELECT user_id, email, full_name, phone_number, role, created_at
+        FROM users
+        WHERE user_id = %s
+        """,
+        (user_id,),
+    ).fetchone()
+
+
 def get_with_password_hash_by_email(
     conn: psycopg.Connection, email: str
 ) -> dict[str, Any] | None:

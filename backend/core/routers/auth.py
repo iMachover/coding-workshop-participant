@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, status
 
+from deps import CurrentUser
 from schemas import LoginRequest, RegisterRequest, UserResponse
 from services import auth_service
 
@@ -20,3 +21,9 @@ def register(body: RegisterRequest) -> dict[str, Any]:
 def login(body: LoginRequest) -> dict[str, Any]:
     """Check credentials and return the user, including the user_id to send as X-User-Id."""
     return auth_service.login(body.email, body.password)
+
+
+@router.get("/me", response_model=UserResponse)
+def me(user: CurrentUser) -> dict[str, Any]:
+    """Return the user identified by the X-User-Id header."""
+    return user

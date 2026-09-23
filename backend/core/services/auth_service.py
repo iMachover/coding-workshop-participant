@@ -24,6 +24,15 @@ def register(data: RegisterRequest) -> dict[str, Any]:
     return user
 
 
+def get_current_user(user_id: int) -> dict[str, Any]:
+    """Resolve the caller's identity. Raises UnauthorizedError if no such user exists."""
+    with db.transaction() as conn:
+        user = user_repository.get_by_id(conn, user_id)
+    if user is None:
+        raise UnauthorizedError("Unknown user")
+    return user
+
+
 def login(email: str, password: str) -> dict[str, Any]:
     """Return the user if the credentials match. The same error for a wrong email or password."""
     with db.transaction() as conn:

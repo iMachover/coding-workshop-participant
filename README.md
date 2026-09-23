@@ -93,6 +93,14 @@ curl -X POST http://localhost:8000/api/core/auth/login -H 'Content-Type: applica
 # 200 {"user_id":1,...}. Wrong email or password: 401 {"detail":"Invalid email or password"}
 ```
 
+Who am I? Every protected route reads the caller from `X-User-Id`.
+
+```sh
+curl http://localhost:8000/api/core/auth/me -H 'X-User-Id: 1'
+# 200 {"user_id":1,"email":"jane.doe@acme.inc",...}
+# Missing, non-numeric or unknown id: 401
+```
+
 CORS allows the frontend origin:
 
 ```sh
