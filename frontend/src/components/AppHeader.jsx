@@ -145,13 +145,18 @@ function AppHeader() {
     <AppBar position="sticky" sx={{ bgcolor: brand.navy }}>
       <Toolbar variant="dense" sx={{ minHeight: 48, px: { xs: 2, sm: 2.5 } }}>
         <ApartmentIcon aria-hidden="true" sx={{ mr: 1.5 }} />
-        <Typography
+        <Box
           component={RouterLink}
           to="/"
-          sx={{ color: 'inherit', textDecoration: 'none', fontSize: 16, fontWeight: 600 }}
+          sx={{ color: 'inherit', textDecoration: 'none', display: 'flex', flexDirection: 'column' }}
         >
-          {isMobile ? 'Helpdesk' : 'Facilities Helpdesk'}
-        </Typography>
+          <Typography component="span" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.2 }}>
+            ACME Facilities
+          </Typography>
+          <Typography component="span" sx={{ fontSize: 11, lineHeight: 1.2, opacity: 0.75 }}>
+            Incident Desk
+          </Typography>
+        </Box>
         {!isMobile && links.length > 0 && (
           <Box sx={{ ml: 4 }}>
             <MainNav links={links} />

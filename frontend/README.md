@@ -1,4 +1,4 @@
-# Facilities Helpdesk: Frontend
+# ACME Facilities Incident Desk: Frontend
 
 React 19 + Vite, with Material UI, React Router and react-responsive. This is the employee app: register, sign in, see a dashboard of your tickets, report an issue, and follow it through notes and escalation. The API and database setup are in the [root README](../README.md).
 

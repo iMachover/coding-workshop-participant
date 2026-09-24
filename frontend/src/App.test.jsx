@@ -189,7 +189,8 @@ describe('header navigation', () => {
 describe('header', () => {
   it('shows only the app name to guests', () => {
     renderWithProviders(<App />, { route: '/login' })
-    expect(screen.getByRole('link', { name: 'Facilities Helpdesk' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: /ACME Facilities/ })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('banner')).toHaveTextContent('Incident Desk')
     expect(screen.queryByRole('button', { name: 'Account' })).not.toBeInTheDocument()
   })
 
@@ -243,9 +244,10 @@ describe('header', () => {
     expect(screen.getByRole('banner')).toHaveTextContent(label)
   })
 
-  it('uses a short name and an avatar-only Account button on phones', () => {
+  it('shows the full name and an avatar-only Account button on phones', () => {
     renderWithProviders(<App />, { route: '/dashboard', user: JANE, width: 375 })
-    expect(screen.getByRole('link', { name: 'Helpdesk' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /ACME Facilities/ })).toBeInTheDocument()
+    expect(screen.getByRole('banner')).toHaveTextContent('Incident Desk')
     expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Account' })).toHaveTextContent(/^JD$/)
   })

@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Facilities Helpdesk API (core)",
+    "name": "ACME Facilities Incident Desk API (core)",
     "description": "Every route of the core service. Run the whole collection top to bottom: each request saves what the next ones need (accessToken, ticketId, ...) into collection variables.\n\nPoint `baseUrl` at your API (default: local Uvicorn). Auth is `Authorization: Bearer {{accessToken}}`, set once at collection level; **Login** saves the token. The Admin folder needs an existing admin account: set `adminEmail` and `adminPassword`. Full reference: postman_testing.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

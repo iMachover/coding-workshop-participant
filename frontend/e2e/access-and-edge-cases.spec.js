@@ -127,7 +127,7 @@ test.describe('on a phone', () => {
     const ticket = await createTicketViaApi(request, owner)
 
     await signIn(page, owner.email)
-    await expect(page.getByRole('link', { name: 'Helpdesk' })).toBeVisible()
+    await expect(page.getByRole('link', { name: /ACME Facilities/ })).toBeVisible()
     await expect(page.getByRole('table')).toHaveCount(0)
     // On phones the list is cards; each card is one link to the ticket.
     const card = page.getByRole('region', { name: 'My tickets' }).getByRole('link').filter({ hasText: ticket.title })

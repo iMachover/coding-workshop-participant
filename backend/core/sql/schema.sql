@@ -1,4 +1,4 @@
--- Employee-slice tables for the Facilities Helpdesk.
+-- Employee-slice tables for the ACME Facilities Incident Desk.
 -- Safe to re-run: every statement uses IF NOT EXISTS. Use reset.sql to start over.
 
 CREATE TABLE IF NOT EXISTS roles (

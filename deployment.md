@@ -1,6 +1,6 @@
 # Deploying to AWS from the WorkSpace
 
-How to deploy the Facilities Helpdesk to AWS from the workshop WorkSpace (VDI), and what to expect along the way. The organizers' setup guide is [docs/validation.md](docs/validation.md); what each script does is in [bin/README.md](bin/README.md).
+How to deploy the ACME Facilities Incident Desk to AWS from the workshop WorkSpace (VDI), and what to expect along the way. The organizers' setup guide is [docs/validation.md](docs/validation.md); what each script does is in [bin/README.md](bin/README.md).
 
 Run every command from the repo root. The READMEs in `infra/` and elsewhere write `../bin/...` because they assume you are inside a subfolder.
 

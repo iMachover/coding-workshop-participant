@@ -1,6 +1,6 @@
 # Postman Testing Guide
 
-Manual API testing for the `core` service (Facilities Helpdesk API) in Postman.
+Manual API testing for the `core` service (ACME Facilities Incident Desk API) in Postman.
 
 > **Keep this file and [postman_collection.json](postman_collection.json) current.** Every time an API route is added or changed, update its section here with the method, URL, headers/auth, params, request body, expected response and common errors, and add or update its request (with tests) in the collection. Routes are defined in [backend/core/routers/](backend/core/routers/).
 

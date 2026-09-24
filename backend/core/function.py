@@ -35,7 +35,7 @@ ERROR_STATUS: dict[type[AppError], int] = {
     ConflictError: 409,
 }
 
-app = FastAPI(title="Facilities Helpdesk API")
+app = FastAPI(title="ACME Facilities Incident Desk API")
 
 # Only needed locally (Vite :3000 -> Uvicorn :8000). In AWS the browser calls the
 # same CloudFront origin, and the Function URL already has its own CORS config.

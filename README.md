@@ -1,4 +1,4 @@
-# Facilities Helpdesk
+# ACME Facilities: Incident Desk
 
 Ticketing app for reporting and resolving facility issues. Frontend: React + Vite. Backend: FastAPI on AWS Lambda. Database: PostgreSQL.
 
