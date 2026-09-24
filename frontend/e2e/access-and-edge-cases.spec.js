@@ -25,14 +25,21 @@ test('a blocked ticket shows the engineer\'s reason next to Blocked', async ({ p
   )
 
   await signIn(page, owner.email)
-  await page.goto(`/tickets/${ticket.ticket_id}`)
+  // The dashboard's most-recent card says so too, with the same reason.
+  const card = page.getByRole('region', { name: `#${ticket.ticket_id} ${ticket.title}` })
+  await expect(card.locator('[aria-current="step"]')).toHaveText('In Progress (paused while blocked)')
+  await expect(card).toContainText('Blocked: Waiting for a replacement part')
 
+  // The details page gives Blocked its own step, current, with the reason right under it.
+  await page.goto(`/tickets/${ticket.ticket_id}`)
+  const steps = page.getByRole('list', { name: 'Ticket workflow' }).getByRole('listitem')
+  await expect(steps.nth(1)).toContainText('In Progress (paused while blocked)')
   const current = page.locator('[aria-current="step"]')
-  await expect(current).toContainText('In Progress (paused while blocked)')
-  await expect(current).toContainText('Blocked: Waiting for a replacement part')
+  await expect(current).toContainText('Blocked (current status)')
+  await expect(current).toContainText('Waiting for a replacement part')
 })
 
-test('a reopened ticket keeps every step in its status history', async ({ page, request }) => {
+test('a reopened ticket says so, and why, on its progress', async ({ page, request }) => {
   const owner = await registerViaApi(request, { name: 'Reopen Owner' })
   const ticket = await createTicketViaApi(request, owner)
   const engineer = await registerViaApi(request, { name: 'Sam Tech', email: uniqueEmail('engineer') })
@@ -49,16 +56,14 @@ test('a reopened ticket keeps every step in its status history', async ({ page, 
   await signIn(page, owner.email)
   await page.goto(`/tickets/${ticketId}`)
 
-  const rows = page.getByRole('list', { name: 'Status history' }).getByRole('listitem')
-  await expect(rows).toHaveCount(4)
-  await expect(rows.nth(0)).toContainText('Opened')
-  await expect(rows.nth(0)).toContainText('You · Employee')
-  await expect(rows.nth(1)).toContainText('In Progress')
-  await expect(rows.nth(2)).toContainText('Resolved')
-  await expect(rows.nth(3)).toContainText('Reopened → Open')
-  await expect(rows.nth(3)).toContainText('Sam Tech · Engineer')
-  await expect(rows.nth(3)).toContainText('Door stuck again this morning')
-  await expect(page.locator('[aria-current="step"]')).toContainText('Open (current status)')
+  // Back at Open, so the later steps are "not reached yet" again.
+  const current = page.locator('[aria-current="step"]')
+  await expect(current).toContainText('Open (current status)')
+  await expect(current).toContainText('Reopened')
+  await expect(current).toContainText('Door stuck again this morning')
+  const steps = page.getByRole('list', { name: 'Ticket workflow' }).getByRole('listitem')
+  await expect(steps.nth(1)).toContainText('In Progress (not reached yet)')
+  await expect(steps.nth(3)).toContainText('Resolved (not reached yet)')
 })
 
 test('forms explain problems before and after reaching the API', async ({ page, request }) => {
@@ -125,12 +130,25 @@ test.describe('on a phone', () => {
     await expect(page.getByRole('link', { name: 'Helpdesk' })).toBeVisible()
     await expect(page.getByRole('table')).toHaveCount(0)
     // On phones the list is cards; each card is one link to the ticket.
-    const card = page.getByRole('region', { name: 'My tickets' }).getByRole('link', { name: new RegExp(`^#${ticket.ticket_id} `) })
+    const card = page.getByRole('region', { name: 'My tickets' }).getByRole('link').filter({ hasText: ticket.title })
+    await expect(card).toHaveAttribute('href', `/tickets/${ticket.ticket_id}`)
     await expect(card).toBeVisible()
+    // The Create button stays on screen, pinned to the bottom.
+    const create = page.getByRole('link', { name: 'Create New Ticket' })
+    await expect(create).toBeInViewport()
+    const box = await create.boundingBox()
+    expect(box.y + box.height).toBeGreaterThan(812 - 24)
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
 
+    // The ticket opens on its Notes tab, with the note box pinned to the bottom.
     await card.click()
-    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toHaveCSS('flex-direction', 'column')
+    await expect(page.getByRole('tab', { name: /^Notes/ })).toHaveAttribute('aria-selected', 'true')
+    const noteBox = page.getByRole('textbox', { name: 'Add a note' })
+    await expect(noteBox).toBeInViewport()
+    const noteBoxBox = await noteBox.boundingBox()
+    expect(noteBoxBox.y + noteBoxBox.height).toBeGreaterThan(812 - 32)
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+    await page.getByRole('tab', { name: 'Progress' }).click()
+    await expect(page.getByRole('list', { name: 'Ticket workflow' }).getByRole('listitem')).toHaveCount(5)
   })
 })

@@ -7,7 +7,6 @@ When an employee opens a ticket, show:
 - Description
 - Category
 - Location
-- Urgency
 - Affected scope
 - Priority
 - Current status

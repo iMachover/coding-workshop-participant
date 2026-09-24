@@ -29,7 +29,7 @@ cd backend/core && ../.venv/bin/uvicorn function:app --reload --port 8000
 
 ### 2. Import the collection
 
-In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer, Admin - closing, Admin - facilities) with **139 requests**: every route's success case plus its common errors. Each request has tests, and every response except a `204 No Content` is checked to be JSON.
+In Postman: **Import** → choose [postman_collection.json](postman_collection.json). You get one folder per section below (Health, Auth, Locations, Tickets, Admin, Engineer, Admin - closing, Admin - facilities) with **141 requests**: every route's success case plus its common errors. Each request has tests, and every response except a `204 No Content` is checked to be JSON.
 
 **Run it all:** right-click the collection → **Run collection** → **Run**. Requests run top to bottom, and each one saves what the next ones need into collection variables:
 
@@ -50,7 +50,7 @@ In Postman: **Import** → choose [postman_collection.json](postman_collection.j
 | `otherUserId` | List people - employee by email | Promoting the second user and moving them back; the Engineer folder's engineer |
 | `engineerAccessToken` | Login - engineer | The Engineer folder's `Authorization: Bearer` header |
 | `closeTicketId` | Setup - the employee reports another ticket | The Admin - closing folder's own ticket |
-| `closedBefore` | Metrics - one ready to close | Checking the close shows up in `closed_last_7_days` |
+| `closedBefore` | Metrics - one ready to close | Checking the close shows up in `closed` |
 | `existingBuildingName` | Facilities tree (the first building) | Checking a rename to a name in use is refused |
 | `facilityName`, `facilityNameLower` | Add building's pre-request script (`Postman Annex <timestamp>`, unique per run) | The Admin - facilities folder's own building, and the same name in lowercase for the duplicate check |
 | `facilityBuildingId`, `facilityFloorId`, `facilitySeatId` | Add building / Add floor / Add seat | Renaming, deactivating and deleting them. The folder deletes all three at the end. |
@@ -153,7 +153,6 @@ Validation errors (422) come from FastAPI and list every problem, with `loc` say
 | Field | Allowed values |
 |---|---|
 | `category` | `network`, `hardware`, `printer`, `hvac`, `electrical`, `furniture`, `building_facilities`, `other` |
-| `urgency` | `low`, `medium`, `high` |
 | `affected_scope` | `me`, `floor`, `building` |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
 | `role` | `employee`, `engineer`, `admin` |
@@ -413,10 +412,9 @@ Every ticket route acts on behalf of the token's user and is **employee-only**: 
 |---|---|---|
 | `view` | `active`, `closed` | `active` = everything not closed (resolved tickets still show) |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` | |
-| `urgency` | `low`, `medium`, `high` | |
-| `q` | text, max 100 | Case-insensitive match on title or short description, or an exact ticket id |
+| `q` | text, max 100 | Case-insensitive match on title or full description, or an exact ticket id |
 
-Examples: `{{baseUrl}}/tickets?view=active&urgency=high`, `{{baseUrl}}/tickets?q=printer`
+Examples: `{{baseUrl}}/tickets?view=active&status=open`, `{{baseUrl}}/tickets?q=printer`
 
 **Expected response: `200 OK`.** Sorted by most recently updated first. Returns `[]` when nothing matches.
 
@@ -425,10 +423,8 @@ Examples: `{{baseUrl}}/tickets?view=active&urgency=high`, `{{baseUrl}}/tickets?q
   {
     "ticket_id": 1,
     "title": "Wi-Fi keeps dropping",
-    "short_description": "Disconnects every few minutes",
     "category": "network",
     "status": "in_progress",
-    "urgency": "medium",
     "affected_scope": "me",
     "escalation_requested": false,
     "building_id": 1,
@@ -450,7 +446,7 @@ Examples: `{{baseUrl}}/tickets?view=active&urgency=high`, `{{baseUrl}}/tickets?q
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
 | 403 | Signed in as an engineer or admin | `{"detail":"You don't have access to this."}` |
 | 422 | Unknown value (e.g. `status=done`) | FastAPI validation list |
-| 422 | Unknown parameter, **including `priority`** | `type: "extra_forbidden"`, `loc: ["query","priority"]` |
+| 422 | Unknown parameter, **including `priority`**, and `urgency` (tickets no longer have one) | `type: "extra_forbidden"`, `loc: ["query","priority"]` |
 
 ### Create a ticket
 
@@ -466,24 +462,20 @@ Examples: `{{baseUrl}}/tickets?view=active&urgency=high`, `{{baseUrl}}/tickets?q
 | Field | Type | Required | Rules |
 |---|---|---|---|
 | `title` | string | yes | 1–150 chars after trimming |
-| `short_description` | string | yes | 1–280 chars after trimming |
 | `description` | string | yes | 1–5000 chars after trimming |
 | `category` | enum | yes | See [Enum values](#enum-values) |
-| `urgency` | enum | yes | `low`, `medium`, `high` |
 | `affected_scope` | enum | yes | `me`, `floor`, `building` |
 | `building_id` | integer | yes | Must exist and be active |
 | `floor_id` | integer | if scope is `floor` or `me` | Must be in `building_id` and active |
 | `seat_id` | integer | if scope is `me` | Must be on `floor_id` and active. Needs `floor_id` |
 
-The server sets `status` (`open`), the creator (from the token) and the internal priority (building → P1, floor → P2, me → P3). Sending `status`, `priority` or `created_by_user_id` in the body has no effect.
+The server sets `status` (`open`), the creator (from the token) and the internal priority (building → P1, floor → P2, me → P3). Sending `status`, `priority` or `created_by_user_id` in the body has no effect. Tickets no longer have an `urgency` or a `short_description`; older clients that still send them are ignored too.
 
 ```json
 {
   "title": "Wi-Fi keeps dropping",
-  "short_description": "Disconnects every few minutes",
   "description": "Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
   "category": "network",
-  "urgency": "medium",
   "affected_scope": "me",
   "building_id": 1,
   "floor_id": 3,
@@ -497,10 +489,8 @@ The server sets `status` (`open`), the creator (from the token) and the internal
 {
   "ticket_id": 12,
   "title": "Wi-Fi keeps dropping",
-  "short_description": "Disconnects every few minutes",
   "description": "Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
   "category": "network",
-  "urgency": "medium",
   "affected_scope": "me",
   "status": "open",
   "building_id": 1,
@@ -549,10 +539,8 @@ The server sets `status` (`open`), the creator (from the token) and the internal
 {
   "ticket_id": 1,
   "title": "Wi-Fi keeps dropping",
-  "short_description": "Disconnects every few minutes",
   "description": "Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
   "category": "network",
-  "urgency": "medium",
   "affected_scope": "me",
   "status": "in_progress",
   "building_id": 1,
@@ -771,13 +759,12 @@ In the collection, the Admin folder's Authorization tab is `Bearer {{adminAccess
 | `view` | `active`, `closed` | `active` = everything not closed |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` | |
 | `priority` | `P1`, `P2`, `P3` | |
-| `urgency` | `low`, `medium`, `high` | |
 | `category` | see [Enum values](#enum-values) | |
 | `building_id` | positive integer | An unknown building just matches nothing |
 | `assignment` | `unassigned`, `assigned` | `unassigned` is the dashboard's triage queue |
 | `assigned_to` | positive integer | One engineer's user id |
 | `escalated` | `true`, `false` | Tickets the employee asked an admin to review |
-| `q` | text, max 100 | Case-insensitive match on title, short description, **requester name or email**, or an exact ticket id |
+| `q` | text, max 100 | Case-insensitive match on title, full description, **requester name or email**, or an exact ticket id |
 
 Examples: `{{baseUrl}}/admin/tickets?assignment=unassigned`, `{{baseUrl}}/admin/tickets?escalated=true&view=active`, `{{baseUrl}}/admin/tickets?q=eve%20other`
 
@@ -788,10 +775,8 @@ Examples: `{{baseUrl}}/admin/tickets?assignment=unassigned`, `{{baseUrl}}/admin/
   {
     "ticket_id": 3,
     "title": "Lobby lights out",
-    "short_description": "Whole lobby is dark",
     "category": "electrical",
     "status": "open",
-    "urgency": "high",
     "affected_scope": "building",
     "escalation_requested": false,
     "building_id": 1,
@@ -811,10 +796,8 @@ Examples: `{{baseUrl}}/admin/tickets?assignment=unassigned`, `{{baseUrl}}/admin/
   {
     "ticket_id": 2,
     "title": "Printer jam",
-    "short_description": "Tray 2 is stuck",
     "category": "printer",
     "status": "in_progress",
-    "urgency": "high",
     "affected_scope": "floor",
     "escalation_requested": false,
     "building_id": 1,
@@ -839,7 +822,7 @@ Examples: `{{baseUrl}}/admin/tickets?assignment=unassigned`, `{{baseUrl}}/admin/
 | Status | When | Body |
 |---|---|---|
 | 422 | Unknown value (e.g. `priority=P4`, `assignment=none`, `escalated=maybe`) | FastAPI validation list, e.g. `loc: ["query","priority"]` |
-| 422 | Unknown parameter | `type: "extra_forbidden"` |
+| 422 | Unknown parameter, including `urgency` (tickets no longer have one) | `type: "extra_forbidden"` |
 | 401 | Missing, invalid or expired token | see [above](#errors-any-route-can-return) |
 | 403 | Signed in as an employee or engineer | `{"detail":"You don't have access to this."}` |
 
@@ -860,10 +843,8 @@ Filters combine with AND, so contradictory ones (`assignment=unassigned&assigned
 {
   "ticket_id": 1,
   "title": "Wi-Fi keeps dropping",
-  "short_description": "Disconnects every few minutes",
   "description": "My laptop loses Wi-Fi every 5-10 minutes.",
   "category": "network",
-  "urgency": "medium",
   "affected_scope": "me",
   "status": "open",
   "building_id": 1,
@@ -1026,10 +1007,8 @@ What it changes:
 {
   "ticket_id": 1,
   "title": "Lobby lights out",
-  "short_description": "x",
   "description": "y",
   "category": "electrical",
-  "urgency": "high",
   "affected_scope": "building",
   "status": "open",
   "building_id": 1,
@@ -1210,10 +1189,8 @@ What it changes, in one transaction:
 {
   "ticket_id": 1,
   "title": "Lobby lights out",
-  "short_description": "Whole lobby is dark",
   "description": "No lights in the lobby.",
   "category": "electrical",
-  "urgency": "high",
   "affected_scope": "building",
   "status": "closed",
   "building_id": 1,
@@ -1269,7 +1246,7 @@ What it changes, in one transaction:
 | `open`, `in_progress`, `blocked`, `resolved` | Tickets in that status | `?status=…` |
 | `active_p1` | Active P1 tickets | `?priority=P1&view=active` |
 | `escalated` | Active tickets the employee escalated | `?escalated=true&view=active` |
-| `closed_last_7_days` | Tickets closed in the last 7 days (from the status history, since tickets don't store a close time) | |
+| `closed` | Closed tickets | `?view=closed` |
 
 ```json
 {
@@ -1280,7 +1257,7 @@ What it changes, in one transaction:
   "resolved": 0,
   "active_p1": 0,
   "escalated": 0,
-  "closed_last_7_days": 1
+  "closed": 1
 }
 ```
 
@@ -1310,7 +1287,7 @@ In the collection, the Engineer folder's Authorization tab is `Bearer {{engineer
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` | |
 | `priority` | `P1`, `P2`, `P3` | |
 | `building_id` | positive integer | |
-| `q` | text, max 100 | Case-insensitive match on title, short description, requester name or email, or an exact ticket id |
+| `q` | text, max 100 | Case-insensitive match on title, full description, requester name or email, or an exact ticket id |
 
 There's no assignee filter, because the queue is always the caller's: `assigned_to`, like any unknown parameter, is a 422.
 
@@ -1323,10 +1300,8 @@ Examples: `{{baseUrl}}/engineer/tickets?view=active`, `{{baseUrl}}/engineer/tick
   {
     "ticket_id": 1,
     "title": "Lobby lights out",
-    "short_description": "x",
     "category": "building_facilities",
     "status": "open",
-    "urgency": "high",
     "affected_scope": "building",
     "escalation_requested": false,
     "building_id": 1,
@@ -1369,10 +1344,8 @@ Examples: `{{baseUrl}}/engineer/tickets?view=active`, `{{baseUrl}}/engineer/tick
 {
   "ticket_id": 1,
   "title": "Lobby lights out",
-  "short_description": "x",
   "description": "y",
   "category": "building_facilities",
-  "urgency": "high",
   "affected_scope": "building",
   "status": "open",
   "building_id": 1,
@@ -1525,10 +1498,8 @@ What it changes, all in one transaction:
 {
   "ticket_id": 1,
   "title": "Lobby lights out",
-  "short_description": "Whole lobby is dark",
   "description": "No lights in the lobby.",
   "category": "electrical",
-  "urgency": "high",
   "affected_scope": "building",
   "status": "blocked",
   "building_id": 1,
@@ -1750,9 +1721,9 @@ Only for something nothing has used: no ticket has ever pointed at it (closed on
 | 7 | `GET /buildings` → `/buildings/1/floors` → `/floors/3/seats` | 200 ×3 |
 | 8 | `POST /tickets` with scope `floor` and no `floor_id` | 422 |
 | 9 | `POST /tickets` with a seat from a different floor | 400 |
-| 10 | `POST /tickets` valid (sets `{{ticketId}}`) | 201, `status: "open"`, no `priority` |
+| 10 | `POST /tickets` valid (sets `{{ticketId}}`) | 201, `status: "open"`, no `priority`, `urgency` or `short_description` |
 | 11 | `GET /tickets?view=active` | 200, includes the new ticket |
-| 12 | `GET /tickets?priority=P1` | 422 |
+| 12 | `GET /tickets?priority=P1`, then `GET /tickets?urgency=high` | 422, 422 |
 | 13 | `GET /tickets/{{ticketId}}` with another user's token (register and log in a second user first) | 404 |
 | 14 | `GET /tickets/{{ticketId}}/history` | 200, one row: `from_status: null`, `to_status: "open"` |
 | 15 | `POST /tickets/{{ticketId}}/notes` | 201 |
@@ -1761,7 +1732,7 @@ Only for something nothing has used: no ticket has ever pointed at it (closed on
 | 18 | `POST /auth/login` as your admin account (sets `{{adminAccessToken}}`) | 200, `user.role: "admin"` |
 | 19 | `GET /admin/tickets` | 200, includes `{{ticketId}}`, every row has `priority`, P1 rows first |
 | 20 | `GET /admin/tickets?assignment=unassigned&escalated=true&q={{ticketId}}` | 200, just that ticket, `priority: "P3"` |
-| 21 | `GET /admin/tickets?priority=P4` | 422 |
+| 21 | `GET /admin/tickets?priority=P4`, then `GET /admin/tickets?urgency=high` | 422, 422 |
 | 22 | `GET /admin/tickets` with the employee's token | 403 |
 | 23 | `GET /admin/tickets/{{ticketId}}` | 200, requester's email and phone |
 | 24 | `GET /admin/tickets/{{ticketId}}/notes` | 200, the employee's note from step 15 |
@@ -1800,7 +1771,7 @@ Only for something nothing has used: no ticket has ever pointed at it (closed on
 | 57 | Send it back: `{"status":"in_progress"}` without a reason, then with one | 422, then 200: back to the same engineer, `resolved_at` cleared |
 | 58 | As the engineer, resolve it again; as the admin, `{"status":"closed","reason":"..."}` | 200, 200 `status: "closed"` |
 | 59 | Close it again; as the engineer, try to change it | 409, 409 |
-| 60 | As the employee, `GET /tickets/<id>/history`; as the admin, `GET /admin/metrics` | Last row is the admin's close with the note; `closed_last_7_days` went up by 1 |
+| 60 | As the employee, `GET /tickets/<id>/history`; as the admin, `GET /admin/metrics` | Last row is the admin's close with the note; `closed` went up by 1 |
 | 61 | As the admin, `GET /admin/facilities` | 200, every building with its floors and seats, each with `is_active` and `active_ticket_count` |
 | 62 | `POST /admin/buildings` with a new name, then the same name in lowercase | 201, then 409 |
 | 63 | `POST /admin/buildings/<id>/floors` with `{"floor_number":-1}`, then again | 201, then 409 |

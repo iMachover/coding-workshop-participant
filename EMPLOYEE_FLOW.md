@@ -30,7 +30,6 @@ Show basic visual statistics for the employee’s tickets, including:
   - Blocked
   - Resolved
   - Closed
-- Tickets by urgency / priority
 
 ### Ticket List
 
@@ -39,7 +38,7 @@ Show the employee’s submitted tickets with core metadata:
 - Ticket ID
 - Title
 - Status
-- Urgency / priority
+- Impact (who is affected)
 - Last updated date
 - Building
 - Floor
@@ -50,7 +49,6 @@ Employees should be able to:
 - Search tickets
 - Filter tickets
 - Filter by status
-- Filter by urgency / priority
 - Toggle between active and closed tickets
 - Click a ticket to open its full details
 
@@ -63,7 +61,6 @@ Employee selects **Create New Ticket** and provides:
 ### Basic Information
 
 - Title
-- Short description
 - Full description
 - Category
 
@@ -92,29 +89,15 @@ Examples:
 - Floor-wide issue → Building → Floor
 - Workstation issue → Building → Floor → Seat
 
-### Urgency and Affected Scope
+### Affected Scope
 
-Employee selects:
-
-**Urgency**
-
-- Low
-- Medium
-- High
-
-Urgency can be explained with examples such as:
-
-- “I cannot work at all.”
-- “This is preventing part of my work.”
-- “This is inconvenient but I can still work.”
-
-**Affected Scope**
+Employee selects who is affected:
 
 - Me / Seat / Local Workstation
 - Floor
 - Building
 
-Affected scope and urgency can help determine an initial internal priority.
+Affected scope sets the initial internal priority. Tickets have no urgency.
 
 Example starting mapping:
 
@@ -153,7 +136,6 @@ Every employee ticket must:
 - Be linked to the employee who submitted it
 - Have a title and description
 - Have a category
-- Have an urgency level
 - Have an affected scope
 - Have a priority
 - Have a status
@@ -181,7 +163,7 @@ Shared incidents appear on the Employee Dashboard under **Happening Near Me**.
 Each shared incident can show:
 
 - Title
-- Short description
+- Description
 - Category
 - Relevant location
 - Affected scope

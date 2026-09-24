@@ -48,10 +48,8 @@ class Ticket(NamedTuple):
 
     by: str
     title: str
-    short_description: str
     description: str
     category: str
-    urgency: str
     affected_scope: str
     where: tuple[str, int | None, str | None]  # building name, floor number, seat number
     age_hours: float
@@ -93,9 +91,9 @@ A, B = "Building A", "Building B"
 TICKETS: tuple[Ticket, ...] = (
     # --- Closed ---
     Ticket(
-        "maria", "Wi-Fi drops in the east wing", "Connection drops every few minutes",
+        "maria", "Wi-Fi drops in the east wing",
         "Everyone near the east stairwell on floor 2 keeps losing Wi-Fi, several times an hour.",
-        "network", "medium", "floor", (A, 2, None), 21 * DAY,
+        "network", "floor", (A, 2, None), 21 * DAY,
         (
             assign(1, "sam"),
             move(3, "sam", "in_progress"),
@@ -105,9 +103,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "james", "Printer jams on double-sided jobs", "Every duplex print jams",
+        "james", "Printer jams on double-sided jobs",
         "The printer next to my desk jams on every double-sided job. Single-sided is fine.",
-        "printer", "low", "me", (A, 1, "102"), 18 * DAY,
+        "printer", "me", (A, 1, "102"), 18 * DAY,
         (
             assign(2, "priya"),
             move(20, "priya", "in_progress"),
@@ -116,9 +114,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "aisha", "Floor 3 is freezing", "Cold air blowing all day",
+        "aisha", "Floor 3 is freezing",
         "The whole of floor 3 has been freezing since Monday. People are wearing coats.",
-        "hvac", "medium", "floor", (A, 3, None), 14 * DAY,
+        "hvac", "floor", (A, 3, None), 14 * DAY,
         (
             assign(1, "sam"),
             move(5, "sam", "in_progress"),
@@ -127,9 +125,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "tom", "Power strip sparked", "Sparks from the strip under my desk",
+        "tom", "Power strip sparked",
         "The power strip under my desk sparked when I plugged in my charger. I've unplugged it.",
-        "electrical", "high", "me", (B, 1, "103"), 9 * DAY,
+        "electrical", "me", (B, 1, "103"), 9 * DAY,
         (
             assign(0.5, "priya"),
             move(1, "priya", "in_progress"),
@@ -139,9 +137,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "lena", "Chair won't stay up", "Chair sinks to the lowest height",
+        "lena", "Chair won't stay up",
         "My chair slowly sinks to the lowest height within a few minutes of adjusting it.",
-        "furniture", "low", "me", (A, 2, "201"), 6 * DAY,
+        "furniture", "me", (A, 2, "201"), 6 * DAY,
         (
             assign(4, "sam"),
             move(24, "sam", "in_progress"),
@@ -150,9 +148,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "maria", "Monitor flickers", "Second screen flickers on and off",
+        "maria", "Monitor flickers",
         "My second monitor flickers every few seconds, which makes it hard to read.",
-        "hardware", "medium", "me", (A, 3, "302"), 5 * DAY,
+        "hardware", "me", (A, 3, "302"), 5 * DAY,
         (
             assign(2, "priya"),
             move(6, "priya", "in_progress"),
@@ -166,9 +164,9 @@ TICKETS: tuple[Ticket, ...] = (
     ),
     # --- Resolved, waiting for an admin to close ---
     Ticket(
-        "james", "Wi-Fi weak at my desk", "Video calls keep freezing",
+        "james", "Wi-Fi weak at my desk",
         "Video calls freeze at my desk. It's fine in the meeting rooms.",
-        "network", "low", "me", (B, 2, "202"), 4 * DAY,
+        "network", "me", (B, 2, "202"), 4 * DAY,
         (
             assign(3, "sam"),
             move(20, "sam", "in_progress"),
@@ -176,9 +174,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "aisha", "Kitchen sink leaking", "Water pooling under the floor 1 sink",
+        "aisha", "Kitchen sink leaking",
         "There's a puddle under the kitchen sink on floor 1 and it's spreading.",
-        "building_facilities", "high", "floor", (B, 1, None), 3 * DAY,
+        "building_facilities", "floor", (B, 1, None), 3 * DAY,
         (
             assign(1, "priya"),
             move(2, "priya", "in_progress"),
@@ -187,9 +185,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "tom", "Printer out of toner", "Floor 1 printer prints blank pages",
+        "tom", "Printer out of toner",
         "The floor 1 printer says it's out of toner and prints blank pages.",
-        "printer", "low", "floor", (A, 1, None), 2 * DAY,
+        "printer", "floor", (A, 1, None), 2 * DAY,
         (
             assign(2, "sam"),
             move(3, "sam", "in_progress"),
@@ -197,9 +195,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "lena", "Air conditioning very loud", "Rattling noise from the ceiling",
+        "lena", "Air conditioning very loud",
         "The air conditioning on floor 3 makes a loud rattling noise all day.",
-        "hvac", "medium", "floor", (A, 3, None), 6 * DAY,
+        "hvac", "floor", (A, 3, None), 6 * DAY,
         (
             escalate(50, "It's been two days and the noise makes calls impossible."),
             assign(52, "sam"),
@@ -209,9 +207,9 @@ TICKETS: tuple[Ticket, ...] = (
     ),
     # --- Blocked ---
     Ticket(
-        "maria", "No heating on floor 2", "Radiators are all cold",
+        "maria", "No heating on floor 2",
         "None of the radiators on floor 2 are warm this morning.",
-        "hvac", "high", "floor", (A, 2, None), 5 * DAY,
+        "hvac", "floor", (A, 2, None), 5 * DAY,
         (
             assign(1, "sam"),
             move(2, "sam", "in_progress"),
@@ -221,9 +219,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "james", "Lights flicker across the building", "All floors, worse in the afternoon",
+        "james", "Lights flicker across the building",
         "The lights on every floor of Building B flicker, mostly in the afternoon.",
-        "electrical", "high", "building", (B, None, None), 4 * DAY,
+        "electrical", "building", (B, None, None), 4 * DAY,
         (
             assign(0.5, "priya"),
             move(1, "priya", "in_progress"),
@@ -232,9 +230,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "aisha", "Standing desk stuck", "Desk stuck at the lowest height",
+        "aisha", "Standing desk stuck",
         "My standing desk won't go up. The motor clicks but nothing moves.",
-        "furniture", "medium", "me", (A, 1, "104"), 7 * DAY,
+        "furniture", "me", (A, 1, "104"), 7 * DAY,
         (
             assign(20, "sam"),
             move(30, "sam", "in_progress"),
@@ -243,9 +241,9 @@ TICKETS: tuple[Ticket, ...] = (
     ),
     # --- In progress ---
     Ticket(
-        "tom", "Network port dead", "No connection from the wall port",
+        "tom", "Network port dead",
         "The network port at my desk gives no connection. I've tried two cables.",
-        "network", "medium", "me", (B, 2, "203"), 2 * DAY,
+        "network", "me", (B, 2, "203"), 2 * DAY,
         (
             assign(2, "priya"),
             move(5, "priya", "in_progress"),
@@ -253,9 +251,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "lena", "Lift out of service", "Building B lift stuck on floor 1",
+        "lena", "Lift out of service",
         "The lift in Building B is stuck on floor 1 with its doors closed.",
-        "building_facilities", "high", "building", (B, None, None), 1 * DAY,
+        "building_facilities", "building", (B, None, None), 1 * DAY,
         (
             assign(0.5, "sam"),
             move(1, "sam", "in_progress"),
@@ -264,18 +262,18 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "maria", "Badge reader rejects badges", "Main entrance won't let anyone in",
+        "maria", "Badge reader rejects badges",
         "The badge reader at the Building A main entrance rejects every badge. Reception is buzzing people in.",
-        "hardware", "high", "building", (A, None, None), 1 * DAY,
+        "hardware", "building", (A, None, None), 1 * DAY,
         (
             assign(1, "priya"),
             move(1.5, "priya", "in_progress"),
         ),
     ),
     Ticket(
-        "james", "Paint smell near the stairwell", "Strong fumes on floor 3",
+        "james", "Paint smell near the stairwell",
         "There's a strong smell of paint near the floor 3 stairwell.",
-        "other", "low", "floor", (A, 3, None), 3 * DAY,
+        "other", "floor", (A, 3, None), 3 * DAY,
         (
             assign(24, "sam"),
             move(40, "sam", "in_progress"),
@@ -283,9 +281,9 @@ TICKETS: tuple[Ticket, ...] = (
         ),
     ),
     Ticket(
-        "aisha", "Scanner saves blank PDFs", "Scans come out empty",
+        "aisha", "Scanner saves blank PDFs",
         "Anything I scan at my desk scanner saves as a blank PDF.",
-        "printer", "low", "me", (B, 1, "101"), 2 * DAY,
+        "printer", "me", (B, 1, "101"), 2 * DAY,
         (
             assign(10, "priya"),
             move(30, "priya", "in_progress"),
@@ -295,44 +293,44 @@ TICKETS: tuple[Ticket, ...] = (
     ),
     # --- Open and assigned, not started ---
     Ticket(
-        "tom", "Radiator won't turn off", "Radiator stuck on full heat",
+        "tom", "Radiator won't turn off",
         "The radiator by my desk is stuck on full heat and the valve won't turn.",
-        "hvac", "medium", "me", (A, 2, "203"), 1 * DAY,
+        "hvac", "me", (A, 2, "203"), 1 * DAY,
         (assign(3, "sam"),),
     ),
     Ticket(
-        "lena", "Socket has no power", "Desk socket is dead",
+        "lena", "Socket has no power",
         "The socket under my desk has no power. The one next to it works.",
-        "electrical", "medium", "me", (A, 3, "304"), 20,
+        "electrical", "me", (A, 3, "304"), 20,
         (assign(2, "priya"),),
     ),
     Ticket(
-        "maria", "Broken blind in the meeting room", "Blind won't come down",
+        "maria", "Broken blind in the meeting room",
         "The blind in the floor 2 meeting room is stuck halfway and the sun is in everyone's eyes.",
-        "furniture", "low", "floor", (B, 2, None), 2 * DAY,
+        "furniture", "floor", (B, 2, None), 2 * DAY,
         (assign(30, "sam"),),
     ),
     # --- Open, waiting for an admin to assign ---
     Ticket(
-        "james", "Guest Wi-Fi login page won't load", "Visitors can't get online",
+        "james", "Guest Wi-Fi login page won't load",
         "The guest Wi-Fi connects, but the login page never loads, so visitors can't get online.",
-        "network", "medium", "building", (A, None, None), 6,
+        "network", "building", (A, None, None), 6,
     ),
     Ticket(
-        "aisha", "Toilets out of order", "Both toilets on floor 1 won't flush",
+        "aisha", "Toilets out of order",
         "Both toilets on floor 1 won't flush.",
-        "building_facilities", "high", "floor", (A, 1, None), 3,
+        "building_facilities", "floor", (A, 1, None), 3,
     ),
     Ticket(
-        "tom", "Fire exit sign is out", "Exit sign light not working",
+        "tom", "Fire exit sign is out",
         "The fire exit sign by the floor 2 stairwell isn't lit.",
-        "other", "medium", "floor", (B, 2, None), 1 * DAY,
+        "other", "floor", (B, 2, None), 1 * DAY,
         (escalate(20, "It's a safety issue and nobody has picked it up yet."),),
     ),
     Ticket(
-        "lena", "Keyboard missing keys", "Two keys came off",
+        "lena", "Keyboard missing keys",
         "The E and R keys have come off my keyboard.",
-        "hardware", "low", "me", (A, 1, "101"), 2,
+        "hardware", "me", (A, 1, "101"), 2,
     ),
 )
 
@@ -429,17 +427,17 @@ def _insert_ticket(
     ticket_id = conn.execute(
         """
         INSERT INTO tickets (
-            title, short_description, description, category, urgency, affected_scope,
+            title, description, category, affected_scope,
             priority, status, building_id, floor_id, seat_id, created_by_user_id,
             assigned_to_user_id, escalation_requested, escalation_reason, blocked_reason,
             created_at, updated_at, acknowledged_at, assigned_at, resolved_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING ticket_id
         """,
         (
-            ticket.title, ticket.short_description, ticket.description, ticket.category,
-            ticket.urgency, ticket.affected_scope, PRIORITY_BY_SCOPE[ticket.affected_scope],
+            ticket.title, ticket.description, ticket.category,
+            ticket.affected_scope, PRIORITY_BY_SCOPE[ticket.affected_scope],
             state["status"], building_id, floor_id, seat_id, creator_id,
             state["assigned_to_user_id"], state["escalation_reason"] is not None,
             state["escalation_reason"], state["blocked_reason"], created_at,

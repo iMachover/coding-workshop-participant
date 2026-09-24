@@ -24,7 +24,7 @@ vi.mock('../services/adminTicketService', () => ({
   listAllTickets: vi.fn(),
   assignTicket: vi.fn(),
   finishTicket: vi.fn(),
-  getMetrics: vi.fn().mockResolvedValue({ unassigned: 0, open: 0, in_progress: 0, blocked: 0, resolved: 0, active_p1: 0, escalated: 0, closed_last_7_days: 0 }),
+  getMetrics: vi.fn().mockResolvedValue({ unassigned: 0, open: 0, in_progress: 0, blocked: 0, resolved: 0, active_p1: 0, escalated: 0, closed: 0 }),
 }))
 vi.mock('../services/locationService', () => ({ listBuildings: vi.fn() }))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
@@ -110,7 +110,7 @@ describe('AdminTicketDetailsPage: the ticket', () => {
     renderWithProviders(<App />, { route: '/admin', user: ALEX })
     const table = await screen.findByRole('table', { name: 'All tickets' })
 
-    await user.click(within(table).getByRole('link', { name: 'Wi-Fi keeps dropping' }))
+    await user.click(within(table).getByRole('link', { name: '#1' }))
 
     expect(await heading()).toBeInTheDocument()
     expect(getTicket).toHaveBeenCalledWith({ ticketId: '1' }, expect.anything())
@@ -121,7 +121,6 @@ describe('AdminTicketDetailsPage: the ticket', () => {
     await heading()
 
     expect(screen.getByLabelText('Priority P3: One person')).toBeInTheDocument()
-    expect(screen.getByText('Impact: Just me')).toBeInTheDocument()
     expect(screen.getByText('Escalated')).toBeInTheDocument()
     const escalation = screen.getByRole('alert')
     expect(escalation).toHaveTextContent('Jane Doe asked for an admin to review this ticket')
@@ -142,6 +141,8 @@ describe('AdminTicketDetailsPage: the ticket', () => {
 
     expect(within(panel('Details')).getByText('My laptop loses Wi-Fi every 5-10 minutes.')).toBeInTheDocument()
     expect(within(panel('Details')).getByText('Not assigned yet')).toBeInTheDocument()
+    expect(within(panel('Details')).getByText('Impact')).toBeInTheDocument()
+    expect(within(panel('Details')).getByText('Just me')).toBeInTheDocument()
 
     const requester = panel('Requester')
     expect(within(requester).getByText('Jane Doe')).toBeInTheDocument()
@@ -173,10 +174,38 @@ describe('AdminTicketDetailsPage: the ticket', () => {
     expect(listTicketHistory).toHaveBeenCalledWith({ ticketId: '1' }, expect.anything())
   })
 
-  it('works on a phone', async () => {
+  it('works on a phone: progress bars, then Details, Notes and History tabs', async () => {
+    const user = renderPage('/admin/tickets/1', 375)
+    await heading()
+
+    expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveTextContent('Open (current status)')
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
+    expect(panel('Assignment')).toBeInTheDocument()
+    expect(panel('Requester')).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('tab', { name: 'Notes (2)' }))
+    expect(screen.getByText('Still dropping.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Assignment' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'History' }))
+    expect(within(screen.getByRole('list', { name: 'Status history' })).getByText('Opened')).toBeInTheDocument()
+  })
+
+  it('pins the close actions to the bottom on a phone, only once resolved', async () => {
+    vi.mocked(getTicket).mockResolvedValue({ ...TICKET, status: 'resolved', assigned_to_user_id: 4, assigned_to_name: 'Sam Tech' })
     renderPage('/admin/tickets/1', 375)
     await heading()
-    expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveStyle({ flexDirection: 'column' })
+
+    const finishing = screen.getByRole('region', { name: 'Finish ticket' })
+    expect(finishing).toHaveStyle({ position: 'sticky' })
+    expect(within(finishing).getByRole('button', { name: 'Close ticket…' })).toBeInTheDocument()
+    expect(within(finishing).getByRole('button', { name: 'Send back…' })).toBeInTheDocument()
+  })
+
+  it('has no close actions on a phone before the ticket is resolved', async () => {
+    renderPage('/admin/tickets/1', 375)
+    await heading()
+    expect(screen.queryByRole('region', { name: 'Finish ticket' })).not.toBeInTheDocument()
   })
 })
 

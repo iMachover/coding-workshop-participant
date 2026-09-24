@@ -42,6 +42,17 @@ def test_create_ignores_server_owned_fields(create_ticket, jane, jane_user, eve_
     assert ticket["created_by_user_id"] == jane_user["user_id"]
 
 
+def test_create_has_no_urgency_or_short_description(create_ticket, jane, run_sql) -> None:
+    # Old clients may still send both; they're ignored, and neither is stored or returned.
+    ticket = create_ticket(jane, urgency="high", short_description="Old field")
+    assert "urgency" not in ticket
+    assert "short_description" not in ticket
+    columns = run_sql(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'tickets'"
+    )
+    assert {"urgency", "short_description"}.isdisjoint(c["column_name"] for c in columns)
+
+
 @pytest.mark.parametrize(
     ("overrides", "detail"),
     [
@@ -68,7 +79,6 @@ def test_create_checks_the_location_hierarchy(
         {"seat_id": None},  # scope "me" without a seat
         {"affected_scope": "floor", "floor_id": None, "seat_id": None},
         {"category": "plumbing"},
-        {"urgency": "urgent"},
         {"title": "   "},
         {"description": "x" * 5001},
     ],
@@ -115,14 +125,14 @@ def test_list_is_most_recently_updated_first(client, api, jane, create_ticket, r
 
 @pytest.fixture
 def mixed_tickets(create_ticket, jane, run_sql) -> dict[str, int]:
-    """Three tickets that differ in status, urgency, scope and text."""
+    """Three tickets that differ in status, scope and text."""
     wifi = create_ticket(jane)["ticket_id"]
     printer = create_ticket(
-        jane, title="Printer jam", short_description="Tray 2 is 100% stuck",
-        category="printer", urgency="high", affected_scope="floor", seat_id=None,
+        jane, title="Printer jam", description="Tray 2 is 100% stuck",
+        category="printer", affected_scope="floor", seat_id=None,
     )["ticket_id"]
     lamp = create_ticket(
-        jane, title="Lamp_broken", short_description="Flickers", urgency="low",
+        jane, title="Lamp_broken", description="Flickers",
         affected_scope="building", floor_id=None, seat_id=None,
     )["ticket_id"]
     run_sql("UPDATE tickets SET status = 'closed' WHERE ticket_id = %s", (lamp,))
@@ -135,13 +145,12 @@ def mixed_tickets(create_ticket, jane, run_sql) -> dict[str, int]:
         ({"view": "active"}, {"wifi", "printer"}),
         ({"view": "closed"}, {"lamp"}),
         ({"status": "open"}, {"wifi", "printer"}),
-        ({"urgency": "high"}, {"printer"}),
         ({"q": "WI-FI"}, {"wifi"}),
-        ({"q": "tray"}, {"printer"}),
+        ({"q": "tray"}, {"printer"}),  # in the full description
         ({"q": "%"}, {"printer"}),
         ({"q": "_"}, {"lamp"}),
         ({"q": "nothing matches"}, set()),
-        ({"view": "active", "urgency": "medium"}, {"wifi"}),
+        ({"view": "active", "status": "open", "q": "printer"}, {"printer"}),
         ({"view": "closed", "status": "open"}, set()),
     ],
 )
@@ -173,7 +182,9 @@ def test_employee_responses_never_include_priority(client, api, jane, create_tic
         assert "priority" not in body
 
 
-@pytest.mark.parametrize("params", [{"status": "bogus"}, {"view": "all"}, {"q": "x" * 101}])
+@pytest.mark.parametrize(
+    "params", [{"status": "bogus"}, {"view": "all"}, {"q": "x" * 101}, {"urgency": "high"}]
+)
 def test_list_rejects_unknown_filter_values(client, api, jane, params) -> None:
     assert client.get(f"{api}/tickets", headers=jane, params=params).status_code == 422
 
