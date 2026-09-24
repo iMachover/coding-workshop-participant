@@ -236,7 +236,7 @@ function RoleFilter({ value, counts, onChange, stacked }) {
                 color: on ? undefined : 'rgba(0,0,0,.75)',
               }}
             >
-              {label}
+              {label}{' '}
               <Box component="span" sx={{ fontWeight: 500, opacity: 0.8 }}>
                 {counts[role]}
               </Box>
@@ -259,7 +259,7 @@ function RoleFilter({ value, counts, onChange, stacked }) {
     >
       {ROLE_FILTERS.map(([role, label]) => (
         <ToggleButton key={label} value={role} sx={{ height: 34, px: 1.5, fontSize: 13, fontWeight: 600, gap: 0.75 }}>
-          {label}
+          {label}{' '}
           <Box component="span" sx={{ fontSize: 12, fontWeight: 500, opacity: 0.75 }}>
             {counts[role]}
           </Box>
@@ -718,9 +718,8 @@ function PeoplePage() {
     tickets.reload()
   }
 
-  const footer = search
-    ? `${rows.length} of ${plural(users.length, 'person')} matching "${search}"`
-    : `${rows.length} of ${users.length} people`
+  const total = `${users.length} ${users.length === 1 ? 'person' : 'people'}`
+  const footer = search ? `${rows.length} of ${total} matching "${search}"` : `${rows.length} of ${total}`
 
   let body
   if (people.error) {

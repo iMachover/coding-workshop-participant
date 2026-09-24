@@ -65,7 +65,7 @@ Frontend code lives in `frontend/src/`:
 | Folder / file | Holds |
 |---|---|
 | `pages/` | One component per route |
-| `components/` | Shared UI: app header (with each role's page links, from `NAV_LINKS` in `utils/roles.js`) and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `Panel`, `BackLink`; `tickets/`, `admin/` and `engineer/` hold feature pieces. Staff pages share `StaffTicketSummary` and `PriorityChip`, which show priority, so they're for staff screens only: employee pages never show priority. |
+| `components/` | Shared UI: app header (with each role's page links, from `NAV_LINKS` in `utils/roles.js`) and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `BackLink`; `tickets/` and `admin/` hold feature pieces. Priority is for staff screens only: employee pages never show priority. |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useAllTickets` (admin), `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |

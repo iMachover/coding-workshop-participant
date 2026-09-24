@@ -285,6 +285,7 @@ describe('page frame', () => {
     ['/dashboard', JANE],
     ['/engineer/', SAM],
     ['/admin', ALEX],
+    ['/admin/people', ALEX],
     ['/admin/facilities', ALEX],
     ['/admin/tickets/abc', ALEX],
   ])('gives %s the full-screen frame', async (route, user) => {
@@ -296,7 +297,6 @@ describe('page frame', () => {
   it.each([
     ['/tickets/new', JANE],
     ['/engineer/tickets/abc', SAM],
-    ['/admin/people', ALEX],
   ])('keeps %s in the 1200px column', async (route, user) => {
     renderWithProviders(<App />, { route, user })
     expect(contained()).toBe(true)

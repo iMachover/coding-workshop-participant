@@ -251,18 +251,18 @@ test('an admin promotes an employee and manages engineers from People', async ({
     await expect(page.getByRole('heading', { level: 1, name: 'People' })).toBeVisible()
     await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
     await expect(people.getByRole('row')).toHaveCount(3) // header + Ren + Busy Bee
-    await expect(rowFor(ren.full_name).getByRole('combobox', { name: 'Role' })).toHaveText('Employee')
+    await expect(rowFor(ren.full_name)).toContainText('Employee')
   })
 
   await test.step('promote Ren after confirming', async () => {
-    await rowFor(ren.full_name).getByRole('combobox', { name: 'Role' }).click()
-    await page.getByRole('option', { name: 'Engineer' }).click()
+    await rowFor(ren.full_name).getByRole('button', { name: 'Make engineer' }).click()
     const dialog = page.getByRole('dialog', { name: `Make ${ren.full_name} an engineer?` })
     await expect(dialog).toContainText("They'll be signed out and need to sign in again.")
     await dialog.getByRole('button', { name: 'Make engineer' }).click()
 
     await expect(page.getByText(`${ren.full_name} is now an engineer. They'll need to sign in again.`)).toBeVisible()
-    await expect(rowFor(ren.full_name).getByRole('combobox', { name: 'Role' })).toHaveText('Engineer')
+    await expect(rowFor(ren.full_name).getByRole('button', { name: 'Make employee' })).toBeVisible()
+    await expect(rowFor(ren.full_name)).toContainText('Engineer')
   })
 
   await test.step('Ren is signed out, and signs back in as an engineer', async () => {
@@ -274,8 +274,7 @@ test('an admin promotes an employee and manages engineers from People', async ({
   })
 
   await test.step('an engineer with an active ticket can\'t go back to employee', async () => {
-    await rowFor(busy.full_name).getByRole('combobox', { name: 'Role' }).click()
-    await page.getByRole('option', { name: 'Employee' }).click()
+    await rowFor(busy.full_name).getByRole('button', { name: 'Make employee' }).click()
     const dialog = page.getByRole('dialog', { name: `Move ${busy.full_name} back to employee?` })
     await dialog.getByRole('button', { name: 'Make employee' }).click()
 
@@ -514,15 +513,15 @@ test.describe('on a phone', () => {
     await expect(page.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
 
-    // The page links sit on their own row on phones.
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click()
+    // The page links sit on their own row on phones, as tabs.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('tab', { name: 'People' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'People' })).toBeVisible()
     await expect(page.getByRole('table')).toHaveCount(0)
     await expect(page.getByRole('listitem').filter({ hasText: admin.email })).toContainText('Facility Admin')
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
 
     // Facilities: a building dropdown instead of the list, and the floors below it.
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Facilities' }).click()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('tab', { name: 'Facilities' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Facilities' })).toBeVisible()
     await expect(page.getByRole('list', { name: 'Buildings' })).toHaveCount(0)
     await choose(page, 'Building', 'Building B')
