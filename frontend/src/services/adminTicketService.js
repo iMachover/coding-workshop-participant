@@ -63,7 +63,7 @@ export function finishTicket(ticketId, status, reason = '') {
 
 /**
  * The dashboard's headline counts: unassigned, by status, active P1s, escalations and
- * closes in the last 7 days. "Active" means not closed, as in listAllTickets.
+ * closed tickets. "Active" means not closed, as in listAllTickets.
  * @param {object} [_params] unused; lets useApiData call it like the other loaders
  * @param {{signal?: AbortSignal}} [options]
  */

@@ -23,13 +23,19 @@ const engineerShape = PropTypes.shape({
 /**
  * Pick an engineer and assign (or reassign) the ticket. The dropdown lists engineers
  * lightest load first, as the API sorts them; the current one is shown but disabled.
- * `compact` is the smaller version for the unassigned queue's cards.
+ * `compact` is the one-row version for the dashboard's unassigned queue: it has no visible
+ * label ("Assign to" is its accessible name) and starts on the lightest-loaded engineer,
+ * so assigning takes one click.
  */
 function AssignEngineerForm({ ticketId, currentEngineerId = null, engineers, onAssigned, compact = false }) {
   const [engineerId, setEngineerId] = useState('')
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const verb = currentEngineerId ? 'Reassign' : 'Assign'
+  // The queue suggests whoever has the least on their plate (the API's first engineer).
+  // Derived rather than stored, so after a reload it follows the new lightest load.
+  const suggested = compact && engineers.data?.length ? String(engineers.data[0].user_id) : ''
+  const chosenId = engineerId || suggested
 
   if (engineers.error) {
     // On the dashboard the workload panel already shows this error (with a retry) once.
@@ -44,7 +50,7 @@ function AssignEngineerForm({ ticketId, currentEngineerId = null, engineers, onA
     setSending(true)
     setError('')
     try {
-      const ticket = await assignTicket(ticketId, engineerId)
+      const ticket = await assignTicket(ticketId, chosenId)
       setEngineerId('')
       onAssigned(ticket)
     } catch (err) {
@@ -55,21 +61,29 @@ function AssignEngineerForm({ ticketId, currentEngineerId = null, engineers, onA
   }
 
   const size = compact ? 'small' : 'medium'
+  // Compact controls are 32px on the desktop queue, 44px (a comfortable tap) on phones.
+  const compactHeight = { xs: 44, sm: 32 }
+  const compactSx = { '& .MuiInputBase-root': { height: compactHeight, fontSize: { xs: 14, sm: 13 } } }
   return (
-    <Stack component="form" onSubmit={handleSubmit} noValidate spacing={1.5} sx={{ width: '100%' }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' } }}>
+    <Stack component="form" onSubmit={handleSubmit} noValidate spacing={compact ? 1 : 1.5} sx={{ width: '100%' }}>
+      <Stack
+        direction={compact ? 'row' : { xs: 'column', sm: 'row' }}
+        spacing={compact ? 1 : 1.5}
+        sx={{ alignItems: compact ? 'center' : { sm: 'center' } }}
+      >
         <TextField
           select
-          label={compact ? 'Assign to' : 'Engineer'}
+          label={compact ? undefined : 'Engineer'}
           size={size}
-          value={engineerId}
+          value={chosenId}
           onChange={(event) => {
             setEngineerId(event.target.value)
             setError('')
           }}
           disabled={sending || !engineers.data}
           helperText={!engineers.data ? 'Loading engineers…' : undefined}
-          sx={{ flexGrow: 1, minWidth: 200 }}
+          slotProps={compact ? { htmlInput: { 'aria-label': 'Assign to' } } : undefined}
+          sx={{ flexGrow: 1, minWidth: compact ? 0 : 200, ...(compact && compactSx) }}
         >
           {(engineers.data ?? []).map((e) => (
             <MenuItem key={e.user_id} value={String(e.user_id)} disabled={e.user_id === currentEngineerId}>
@@ -80,10 +94,11 @@ function AssignEngineerForm({ ticketId, currentEngineerId = null, engineers, onA
         </TextField>
         <Button
           type="submit"
-          variant={compact ? 'outlined' : 'contained'}
+          variant="contained"
           size={size}
-          disabled={!engineerId || sending}
+          disabled={!chosenId || sending}
           startIcon={sending ? <CircularProgress size={16} color="inherit" /> : null}
+          sx={compact ? { height: compactHeight, px: { xs: 2.25, sm: 1.5 }, flex: 'none', alignSelf: 'flex-start' } : undefined}
         >
           {sending ? `${verb}ing…` : verb}
         </Button>

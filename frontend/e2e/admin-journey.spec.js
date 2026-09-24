@@ -14,6 +14,9 @@ import {
 
 const ADMIN_HOME = 'Facility Admin dashboard'
 
+/** The dashboard table's row links ("#12") for these tickets, in order. */
+const ids = (...tickets) => tickets.map((t) => `#${t.ticket_id}`)
+
 /**
  * Three tickets from two employees, with a unique stamp in every title so other tests'
  * tickets in the shared e2e database can be filtered out by searching for it:
@@ -82,7 +85,8 @@ test('an admin triages every ticket from their dashboard', async ({ page, reques
   await test.step('the unassigned queue shows new tickets with their priority', async () => {
     const lightsCard = queue.getByRole('listitem').filter({ hasText: lights.title })
     await expect(lightsCard.getByLabel('Priority P1: Building-wide')).toBeVisible()
-    await expect(lightsCard).toContainText('Dana Requester · waiting')
+    // The lightest-loaded engineer is already chosen, so it's one click to assign.
+    await expect(lightsCard.getByRole('button', { name: 'Assign' })).toBeEnabled()
 
     const wifiCard = queue.getByRole('listitem').filter({ hasText: wifi.title })
     await expect(wifiCard.getByLabel('Priority P3: One person')).toBeVisible()
@@ -93,36 +97,33 @@ test('an admin triages every ticket from their dashboard', async ({ page, reques
   })
 
   const table = page.getByRole('table', { name: 'All tickets' })
-  const titles = () => table.getByRole('row').getByRole('link')
+  // Each row's link is its ticket number.
+  const numbers = () => table.getByRole('row').getByRole('link')
 
   await test.step('search all tickets, then narrow with filters', async () => {
     await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
     // Triage order: the two P1s oldest first, then the P3.
-    await expect(titles()).toHaveText([lights.title, printer.title, wifi.title])
+    await expect(numbers()).toHaveText(ids(lights, printer, wifi))
     const printerRow = table.getByRole('row').filter({ hasText: printer.title })
     await expect(printerRow).toContainText('Sam Tech')
     await expect(printerRow).toContainText('In Progress')
 
-    await choose(page, 'Assignment', 'Unassigned')
-    await expect(titles()).toHaveText([lights.title, wifi.title])
-
     await page.getByRole('switch', { name: 'Escalated only' }).check()
-    await expect(titles()).toHaveText([wifi.title])
+    await expect(numbers()).toHaveText(ids(wifi))
 
     await page.getByRole('switch', { name: 'Escalated only' }).uncheck()
-    await choose(page, 'Assignment', 'Assigned or not')
     await choose(page, 'Priority', 'P1 · Building-wide')
-    await expect(titles()).toHaveText([lights.title, printer.title])
+    await expect(numbers()).toHaveText(ids(lights, printer))
   })
 
   await test.step('search by the requester\'s email', async () => {
     await choose(page, 'Priority', 'All priorities')
     await page.getByRole('searchbox', { name: 'Search' }).fill(lee.email)
-    await expect(titles()).toHaveText([wifi.title])
+    await expect(numbers()).toHaveText(ids(wifi))
   })
 
   await test.step('open the escalated ticket: priority, requester, reason and notes', async () => {
-    await titles().first().click()
+    await numbers().first().click()
     await expect(page).toHaveURL(new RegExp(`/admin/tickets/${wifi.ticket_id}$`))
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`#${wifi.ticket_id} ${wifi.title}`)
     await expect(page.getByLabel('Priority P3: One person')).toBeVisible()
@@ -181,7 +182,7 @@ test('an admin assigns and reassigns tickets to engineers', async ({ page, reque
     await adaCard.click()
     await expect(adaCard).toHaveAttribute('aria-pressed', 'true')
     const table = page.getByRole('table', { name: 'All tickets' })
-    await expect(table.getByRole('row').getByRole('link')).toHaveText([lights.title])
+    await expect(table.getByRole('row').getByRole('link')).toHaveText(ids(lights))
     await expect(table.getByRole('row').filter({ hasText: lights.title })).toContainText(ada.full_name)
   })
 
@@ -282,7 +283,7 @@ test('an admin promotes an employee and manages engineers from People', async ({
     await dialog.getByRole('link', { name: 'See their tickets' }).click()
 
     await expect(page).toHaveURL(new RegExp(`/admin\\?engineer=${busy.user_id}$`))
-    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText([ticket.title])
+    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText(ids(ticket))
     // Ren is now in the workload, ready for tickets.
     await expect(
       page.getByRole('region', { name: 'Engineer workload' }).getByRole('button', { name: new RegExp(`^${ren.full_name}: 0 active`) }),
@@ -291,7 +292,7 @@ test('an admin promotes an employee and manages engineers from People', async ({
 })
 
 /**
- * A4 through the UI: the metric cards -> "Ready to close" lists resolved tickets -> close
+ * A4 through the UI: the metric cards -> "Resolved" lists resolved tickets -> close
  * one with a note (the employee sees it) -> send the other back to its engineer, who has
  * it again.
  */
@@ -317,19 +318,19 @@ test('an admin closes one resolved ticket and sends another back', async ({ page
 
   await signIn(page, admin.email, { home: ADMIN_HOME })
   const numbers = page.getByRole('list', { name: 'Tickets in numbers' })
-  const titles = () => page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')
+  const rowNumbers = () => page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')
   const finishing = page.getByRole('region', { name: 'Finish ticket' })
 
-  await test.step('"Ready to close" lists the resolved tickets', async () => {
-    const readyCard = numbers.getByRole('button', { name: /^Ready to close: \d+/ })
-    await readyCard.click()
-    await expect(readyCard).toHaveAttribute('aria-pressed', 'true')
+  await test.step('"Resolved" lists the tickets awaiting close', async () => {
+    const resolvedCard = numbers.getByRole('button', { name: /^Resolved: \d+/ })
+    await resolvedCard.click()
+    await expect(resolvedCard).toHaveAttribute('aria-pressed', 'true')
     await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
-    await expect(titles()).toHaveText([toClose.title, toSendBack.title])
+    await expect(rowNumbers()).toHaveText(ids(toClose, toSendBack))
   })
 
   await test.step('close one with a note', async () => {
-    await titles().first().click()
+    await rowNumbers().first().click()
     await expect(finishing).toContainText('The engineer has resolved this.')
     await finishing.getByRole('button', { name: 'Close ticket…' }).click()
     const dialog = page.getByRole('dialog', { name: 'Close ticket' })
@@ -365,7 +366,7 @@ test('an admin closes one resolved ticket and sends another back', async ({ page
 
   await test.step('the dashboard counts the close', async () => {
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Dashboard' }).click()
-    await expect(numbers.getByRole('button', { name: /^Closed \(7 days\): [1-9]\d*/ })).toBeVisible()
+    await expect(numbers.getByRole('button', { name: /^Closed: [1-9]\d*/ })).toBeVisible()
   })
 })
 
@@ -466,7 +467,7 @@ test('an admin manages facilities, and employees only see active ones', async ({
   await test.step("the building's ticket count opens its tickets on the dashboard", async () => {
     await details.getByRole('link', { name: '1 active ticket' }).click()
     await expect(page).toHaveURL(new RegExp(`/admin\\?building=${annexId}$`))
-    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText([ticket.title])
+    await expect(page.getByRole('table', { name: 'All tickets' }).getByRole('row').getByRole('link')).toHaveText(ids(ticket))
     await expect(page.getByRole('combobox', { name: /^Building/ })).toHaveText(`${annex} (inactive)`)
   })
 })
@@ -491,19 +492,26 @@ test.describe('on a phone', () => {
     const admin = await registerAdmin(request)
 
     await signIn(page, admin.email, { home: ADMIN_HOME })
+    // Phones open on the Queue tab; the tickets have a tab of their own.
+    await expect(page.getByRole('tab', { name: /^Queue/ })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('region', { name: /Needs an engineer/ }).getByText(lights.title)).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+    await page.getByRole('tab', { name: /^Tickets/ }).click()
     await page.getByRole('searchbox', { name: 'Search' }).fill(String(stamp))
     await expect(page.getByRole('table')).toHaveCount(0)
     // On phones the list is cards; each card is one link to the ticket.
     const card = page
       .getByRole('region', { name: 'All tickets' })
       .getByRole('link')
-      .filter({ hasText: `#${lights.ticket_id} ${lights.title}` })
+      .filter({ hasText: lights.title })
     await expect(card).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
 
     await card.click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`#${lights.ticket_id} ${lights.title}`)
-    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toHaveCSS('flex-direction', 'column')
+    // Phones get the progress as a row of bars, then the ticket's sections as tabs.
+    await expect(page.getByRole('list', { name: 'Ticket workflow' })).toContainText('Open (current status)')
+    await expect(page.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
 
     // The page links sit on their own row on phones.

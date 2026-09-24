@@ -5,7 +5,7 @@ import { choose, PASSWORD, uniqueEmail } from './helpers.js'
 /**
  * The critical employee path, end to end through the UI:
  * register -> sign in -> create a ticket (recorded as opened) -> add a note -> escalate -> see it on the
- * dashboard -> search -> sign out.
+ * dashboard -> add a note from there -> filter and search -> sign out.
  */
 test('an employee reports an issue and follows it through', async ({ page }) => {
   const email = uniqueEmail('jordan')
@@ -50,10 +50,8 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
   await test.step('create a ticket, choosing Building -> Floor -> Seat', async () => {
     await page.getByRole('link', { name: 'Create New Ticket' }).click()
     await page.getByLabel(/^Title/).fill(title)
-    await page.getByLabel(/^Short description/).fill('Lamp at my desk flickers')
     await choose(page, 'Category', 'Electrical / Power')
     await page.getByLabel(/^Full description/).fill('Started this morning. Hard to read.')
-    await page.getByRole('radio', { name: /^High/ }).check()
     await page.getByRole('radio', { name: /^Just me/ }).check()
     await choose(page, 'Building', 'Building A')
     await choose(page, 'Floor', 'Floor 3')
@@ -64,49 +62,92 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
     await expect(page.getByText('Ticket created.')).toBeVisible()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(title)
     await expect(page.locator('[aria-current="step"]')).toContainText('Open (current status)')
+    await expect(page.getByText('Engineer: Not assigned yet')).toBeVisible()
     const details = page.getByRole('region', { name: 'Details' })
-    await expect(details).toContainText('Building A · Floor 3 · Seat 301')
-    await expect(details).toContainText('Not assigned yet')
+    await expect(details).toContainText('Building A')
+    await expect(details).toContainText('Floor 3 · Seat 301')
 
-    const history = page.getByRole('list', { name: 'Status history' }).getByRole('listitem')
-    await expect(history).toHaveCount(1)
-    await expect(history).toContainText('Opened')
-    await expect(history).toContainText('You · Employee')
+    // The progress doubles as the history: each reached step says when it happened.
+    const progress = page.getByRole('region', { name: 'Progress' })
+    await expect(progress).toContainText('Received')
+    await expect(progress.getByRole('listitem')).toHaveCount(5)
   })
 
   await test.step('add a note', async () => {
     const notes = page.getByRole('region', { name: 'Notes' })
     await expect(notes.getByText('No notes yet.')).toBeVisible()
     await notes.getByRole('textbox', { name: 'Add a note' }).fill('It is getting worse.')
-    await notes.getByRole('button', { name: 'Add note' }).click()
+    await notes.getByRole('button', { name: 'Send' }).click()
 
     await expect(notes.getByRole('listitem')).toHaveCount(1)
     await expect(notes.getByRole('listitem')).toContainText('You · Employee')
     await expect(notes.getByRole('listitem')).toContainText('It is getting worse.')
+    await expect(notes.getByRole('textbox', { name: 'Add a note' })).toHaveValue('')
   })
 
   await test.step('request escalation', async () => {
     const escalation = page.getByRole('region', { name: 'Escalation' })
-    await escalation.getByRole('button', { name: 'Request escalation' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Request escalation' })
-    await dialog.getByRole('textbox').fill('I cannot read my documents.')
-    await dialog.getByRole('button', { name: 'Request escalation' }).click()
+    await escalation.getByRole('button', { name: 'Escalate' }).click()
+    await escalation.getByRole('textbox', { name: 'What changed?' }).fill('I cannot read my documents.')
+    await escalation.getByRole('button', { name: 'Escalate ticket' }).click()
 
-    await expect(dialog).toBeHidden()
-    await expect(escalation).toContainText('Escalation requested.')
-    await expect(escalation).toContainText('Your reason: I cannot read my documents.')
+    await expect(escalation.getByRole('textbox')).toBeHidden()
+    await expect(escalation).toContainText('Escalation requested')
+    await expect(escalation).toContainText('I cannot read my documents.')
+    await expect(page.getByText('Escalated', { exact: true })).toBeVisible()
   })
 
-  await test.step('see it on the dashboard and find it by search', async () => {
+  await test.step('see it on the dashboard: counts, card, list and updates', async () => {
     await page.getByRole('link', { name: 'Back to dashboard' }).click()
 
-    await expect(page.locator('#highlight-title')).toContainText(title)
-    const activeTile = page.getByRole('heading', { name: 'Active tickets' }).locator('..')
-    await expect(activeTile).toContainText('1')
+    const counts = page.getByRole('list', { name: 'My tickets in numbers' }).getByRole('listitem')
+    await expect(counts).toHaveText([
+      'Active1not yet closed',
+      'Open1not started yet',
+      'In Progress0being fixed',
+      'Blocked0waiting on something',
+      'Resolved0fixed, pending close',
+    ])
+
+    // The most recent active ticket, with its progress and the note added above.
+    const card = page.getByRole('region', { name: new RegExp(`^#\\d+ ${title}$`) })
+    await expect(card.getByRole('list', { name: 'Ticket workflow' }).locator('[aria-current="step"]')).toHaveText(
+      'Open (current status)',
+    )
+    await expect(card).toContainText('Waiting for an engineer')
+    const note = card.getByRole('figure', { name: 'Latest note' })
+    await expect(note).toContainText('You · Employee')
+    await expect(note).toContainText('It is getting worse.')
+
     const table = page.getByRole('table', { name: 'My tickets' })
     await expect(table.getByRole('row')).toHaveCount(2)
-    await expect(table).toContainText('High')
+    await expect(table).toContainText(title)
+    await expect(table).toContainText('Building A · Floor 3 · Seat 301')
     await expect(table).toContainText('Just me')
+    await expect(table).toContainText('Electrical / Power')
+
+    await expect(page.getByRole('region', { name: 'Recent updates' })).toContainText(`${title} was received.`)
+  })
+
+  await test.step('add a note from the dashboard card', async () => {
+    const card = page.getByRole('region', { name: new RegExp(`^#\\d+ ${title}$`) })
+    await card.getByRole('button', { name: 'Add note' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Add note' })
+    await dialog.getByRole('textbox', { name: /Your note/ }).fill('Now it is off completely.')
+    await dialog.getByRole('button', { name: 'Add note' }).click()
+
+    await expect(dialog).toBeHidden()
+    await expect(card.getByRole('figure', { name: 'Latest note' })).toContainText('Now it is off completely.')
+  })
+
+  await test.step('filter by a count and by search', async () => {
+    const table = page.getByRole('table', { name: 'My tickets' })
+    const counts = page.getByRole('list', { name: 'My tickets in numbers' })
+
+    await counts.getByRole('button', { name: /^Blocked/ }).click()
+    await expect(page.getByText('No tickets match these filters.')).toBeVisible()
+    await page.getByRole('button', { name: 'Clear the Blocked filter' }).click()
+    await expect(table.getByRole('row')).toHaveCount(2)
 
     await page.getByRole('searchbox', { name: 'Search' }).fill('no such ticket')
     await expect(page.getByText('No tickets match these filters.')).toBeVisible()
@@ -115,7 +156,8 @@ test('an employee reports an issue and follows it through', async ({ page }) => 
   })
 
   await test.step('sign out, and protected pages need sign-in again', async () => {
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    await page.getByRole('button', { name: 'Account' }).click()
+    await page.getByRole('menuitem', { name: 'Sign out' }).click()
     await expect(page.getByRole('alert')).toHaveText("You've signed out.")
 
     await page.goto('/dashboard')

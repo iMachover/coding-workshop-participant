@@ -8,11 +8,11 @@ React 19 + Vite, with Material UI, React Router and react-responsive. This is th
 |---|---|---|
 | `/register` | Create an account (`@acme.inc` emails only) | Guests |
 | `/login` | Sign in | Guests |
-| `/dashboard` | Most recent active ticket, counts by status and urgency, searchable list | Signed in |
-| `/tickets/new` | Report an issue: what, how urgent, where (Building → Floor → Seat) | Signed in |
+| `/dashboard` | Most recent active ticket, counts by status, searchable list | Signed in |
+| `/tickets/new` | Report an issue: what's wrong, who is affected and where (Building → Floor → Seat), on one screen | Signed in |
 | `/tickets/:id` | Workflow, details, notes and escalation for one of your tickets | Signed in |
 
-Employees see a ticket's status, urgency and impact. The internal priority is never shown or sent to them.
+Employees see a ticket's status and impact (who is affected). The internal priority is never shown or sent to them. Tickets have no urgency or short description.
 
 ## Commands
 

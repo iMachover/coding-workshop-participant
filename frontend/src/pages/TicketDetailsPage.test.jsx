@@ -14,6 +14,7 @@ import {
 } from '../services/ticketService'
 import { makeTicket, TICKETS } from '../test/fixtures'
 import { JANE, renderWithProviders } from '../test/renderWithProviders'
+import { formatDateTime } from '../utils/ticketFormat'
 
 vi.mock('../services/ticketService', () => ({
   getMyTicket: vi.fn(),
@@ -27,11 +28,9 @@ vi.mock('../services/ticketService', () => ({
 const TICKET = makeTicket({
   ticket_id: 5,
   title: 'Printer jam',
-  short_description: 'Tray 2 stuck',
   description: 'Every job jams.\nTried restarting.',
   category: 'printer',
   status: 'in_progress',
-  urgency: 'high',
   affected_scope: 'floor',
   floor_number: 2,
   seat_number: null,
@@ -61,17 +60,19 @@ const change = (history_id, from_status, to_status, extra = {}) => ({
   changed_at: `2026-09-22T1${history_id}:00:00-04:00`,
   ...extra,
 })
+// The time a change() row happened, as the page shows it.
+const at = (historyId) => formatDateTime(`2026-09-22T1${historyId}:00:00-04:00`)
 
 const OPENED = change(1, null, 'open', { changed_by_user_id: JANE.user_id, changed_by_name: 'Jane Doe', changed_by_role: 'employee' })
+const STARTED = change(2, 'open', 'in_progress')
 
-// Open -> In progress -> Blocked -> In progress -> Resolved -> reopened.
-const HISTORY = [
+// Open -> In progress -> Blocked -> In progress -> Resolved.
+const RESOLVED_HISTORY = [
   OPENED,
-  change(2, 'open', 'in_progress'),
+  STARTED,
   change(3, 'in_progress', 'blocked', { reason: 'Waiting on a roller' }),
   change(4, 'blocked', 'in_progress'),
-  change(5, 'in_progress', 'resolved'),
-  change(6, 'resolved', 'open', { changed_by_user_id: 9, changed_by_name: 'Ada Admin', changed_by_role: 'admin', reason: 'Jammed again the next day' }),
+  change(5, 'in_progress', 'resolved', { reason: 'New roller fitted' }),
 ]
 
 function renderPage(route = '/tickets/5', width = 1280) {
@@ -82,11 +83,13 @@ function renderPage(route = '/tickets/5', width = 1280) {
 
 const panel = (name) => screen.getByRole('region', { name })
 const heading = () => screen.findByRole('heading', { level: 1, name: '#5 Printer jam' })
+const steps = () => within(screen.getByRole('list', { name: 'Ticket workflow' })).getAllByRole('listitem')
+const currentStep = () => steps().find((li) => li.getAttribute('aria-current') === 'step')
 
 beforeEach(() => {
   vi.mocked(getMyTicket).mockReset().mockResolvedValue(TICKET)
   vi.mocked(listNotes).mockReset().mockResolvedValue(NOTES)
-  vi.mocked(listStatusHistory).mockReset().mockResolvedValue([OPENED])
+  vi.mocked(listStatusHistory).mockReset().mockResolvedValue([OPENED, STARTED])
   vi.mocked(addNote).mockReset()
   vi.mocked(requestEscalation).mockReset()
   vi.mocked(listMyTickets).mockReset().mockResolvedValue(TICKETS)
@@ -133,54 +136,63 @@ describe('TicketDetailsPage: the ticket', () => {
     renderWithProviders(<App />, { route: '/dashboard', user: JANE })
     const table = await screen.findByRole('table', { name: 'My tickets' })
 
-    await user.click(within(table).getByRole('link', { name: 'Printer jam' }))
+    await user.click(within(table).getByRole('link', { name: '#5' }))
 
     expect(await heading()).toBeInTheDocument()
     expect(getMyTicket).toHaveBeenCalledWith({ ticketId: '5' }, expect.anything())
+    expect(listStatusHistory).toHaveBeenCalledWith({ ticketId: '5' }, expect.anything())
   })
 
-  it('shows the header, workflow and details', async () => {
+  it('shows the status, impact and engineer under the title, and the details', async () => {
     renderPage()
     await heading()
 
-    expect(screen.getByText('Tray 2 stuck')).toBeInTheDocument()
-    const workflow = within(panel('Progress')).getByRole('list', { name: 'Ticket workflow' })
-    expect(within(workflow).getAllByRole('listitem').find((li) => li.getAttribute('aria-current'))).toHaveTextContent(
-      'In Progress (current status)',
-    )
+    expect(screen.getByText('Impact: My floor')).toBeInTheDocument()
+    expect(screen.getByText('Engineer: Sam Tech')).toBeInTheDocument()
+    expect(screen.queryByText('Escalated')).not.toBeInTheDocument()
 
     const details = panel('Details')
     expect(within(details).getByText(/Every job jams\.\s+Tried restarting\./)).toBeInTheDocument()
     const facts = Object.fromEntries(
       within(details).getAllByRole('term').map((dt) => [dt.textContent, dt.nextSibling.textContent]),
     )
-    expect(facts).toMatchObject({
+    expect(facts).toEqual({
       Category: 'Printer / Peripheral',
-      Location: 'Building A · Floor 2',
-      Urgency: 'High',
       Impact: 'My floor',
-      'Assigned engineer': 'Sam Tech',
+      Building: 'Building A',
+      'Floor · Seat': 'Floor 2',
+      Created: formatDateTime(TICKET.created_at),
+      'Last update': expect.stringMatching(/ago$/),
     })
-    expect(facts).toHaveProperty('Acknowledged')
-    expect(facts).toHaveProperty('Assigned')
-    expect(facts).not.toHaveProperty('Resolved')
-    expect(facts).not.toHaveProperty('Priority')
-    expect(document.body).not.toHaveTextContent(/priority|\bP[123]\b/i)
-    expect(screen.getByText('Impact: My floor')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/priority|urgency|\bP[123]\b/i)
   })
 
   it('says when no engineer is assigned yet', async () => {
     vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'open', assigned_to_name: null, acknowledged_at: null, assigned_at: null })
     renderPage()
     await heading()
-    expect(within(panel('Details')).getByText('Not assigned yet')).toBeInTheDocument()
+    expect(screen.getByText('Engineer: Not assigned yet')).toBeInTheDocument()
   })
 
-  it('shows the blocked reason in the workflow', async () => {
-    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
+  it('leaves out a floor and seat the ticket does not have', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, floor_number: null, seat_number: null })
     renderPage()
     await heading()
-    expect(within(panel('Progress')).getByText(/^Blocked: Waiting on parts/)).toBeInTheDocument()
+    expect(within(panel('Details')).queryByText('Floor · Seat')).not.toBeInTheDocument()
+  })
+
+  it('shows both floor and seat when the ticket has them', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, seat_number: '204' })
+    renderPage()
+    await heading()
+    expect(within(panel('Details')).getByText('Floor 2 · Seat 204')).toBeInTheDocument()
+  })
+
+  it('marks an escalated ticket beside its status', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, escalation_requested: true, escalation_reason: 'x' })
+    renderPage()
+    await heading()
+    expect(screen.getByText('Escalated')).toBeInTheDocument()
   })
 
   it('confirms a ticket that was just created', async () => {
@@ -192,77 +204,113 @@ describe('TicketDetailsPage: the ticket', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText(/Ticket created/)).not.toBeInTheDocument()
   })
-
-  it('works on a phone', async () => {
-    renderPage('/tickets/5', 375)
-    await heading()
-    expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveStyle({ flexDirection: 'column' })
-  })
 })
 
-describe('TicketDetailsPage: status history', () => {
-  const rows = async () => within(panel('Status history')).findAllByRole('listitem')
-
-  it('shows a new ticket as opened by you', async () => {
+describe('TicketDetailsPage: progress', () => {
+  it('shows each step with when it happened, and marks the current one', async () => {
     renderPage()
     await heading()
-    const items = await rows()
-    expect(items).toHaveLength(1)
-    expect(items[0]).toHaveTextContent(/^OpenedYou · Employee · .+$/)
-    expect(listStatusHistory).toHaveBeenCalledWith({ ticketId: '5' }, expect.anything())
-  })
+    await screen.findByText(`Sam Tech started ${at(2)}`)
 
-  it('lists every step oldest first, with who made it and why', async () => {
-    vi.mocked(listStatusHistory).mockResolvedValue(HISTORY)
-    renderPage()
-    await heading()
-    const items = await rows()
-
-    expect(items.map((li) => li.firstChild.textContent)).toEqual([
-      'Opened',
-      'In Progress',
-      'Blocked',
-      'Unblocked → In Progress',
-      'Resolved',
-      'Reopened → Open',
+    const items = within(panel('Progress')).getAllByRole('listitem')
+    expect(items.map((li) => li.textContent)).toEqual([
+      `Open (done)Received ${formatDateTime(TICKET.created_at)}`,
+      `In Progress (current status)Sam Tech started ${at(2)}`,
+      'Blocked (only if something holds it up)Only if something holds it up',
+      'Resolved (not reached yet)—',
+      'Closed (not reached yet)—',
     ])
-    expect(items[1]).toHaveTextContent(/^In ProgressSam Tech · Engineer · /)
-    expect(items[2]).toHaveTextContent(/Waiting on a roller$/)
-    expect(items[5]).toHaveTextContent(/^Reopened → OpenAda Admin · Facility admin · .+Jammed again the next day$/)
+    expect(currentStep()).toHaveTextContent('In Progress (current status)')
     expect(document.body).not.toHaveTextContent(/priority|\bP[123]\b/i)
   })
 
-  it('shows a placeholder while the history loads', async () => {
-    vi.mocked(listStatusHistory).mockReturnValue(new Promise(() => {}))
+  it('shows the blocked reason on the Blocked step, which becomes the current one', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
+    vi.mocked(listStatusHistory).mockResolvedValue([OPENED, STARTED, change(3, 'in_progress', 'blocked', { reason: 'Waiting on parts' })])
     renderPage()
     await heading()
-    expect(within(panel('Status history')).getByLabelText('Loading status history')).toBeInTheDocument()
+
+    await screen.findByText(`Waiting on parts · since ${at(3)}`)
+    expect(currentStep()).toHaveTextContent(`Blocked (current status)Waiting on parts · since ${at(3)}`)
+    expect(steps()[1]).toHaveTextContent('In Progress (paused while blocked)')
   })
 
-  it('says when there is no history', async () => {
-    vi.mocked(listStatusHistory).mockResolvedValue([])
+  it("shows a resumed, then resolved ticket, that it was once blocked, and the engineer's summary", async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'resolved' })
+    vi.mocked(listStatusHistory).mockResolvedValue(RESOLVED_HISTORY)
     renderPage()
     await heading()
-    expect(await within(panel('Status history')).findByText('No status changes yet.')).toBeInTheDocument()
+    await screen.findByText(`Sam Tech resolved it ${at(5)}`)
+
+    expect(steps().map((li) => li.textContent)).toEqual([
+      `Open (done)Received ${formatDateTime(TICKET.created_at)}`,
+      `In Progress (done)Work resumed ${at(4)}`,
+      `Blocked (only if something holds it up)Was blocked ${at(3)}`,
+      `Resolved (current status)Sam Tech resolved it ${at(5)}“New roller fitted”`,
+      'Closed (not reached yet)—',
+    ])
+    // Clamped to two lines on desktop, so the whole reason is in the tooltip.
+    expect(screen.getByText('“New roller fitted”')).toHaveAttribute('title', 'New roller fitted')
   })
 
-  it('explains a failed history load and retries', async () => {
-    vi.mocked(listStatusHistory)
-      .mockRejectedValueOnce(new ApiError("Can't reach the server.", { status: 0 }))
-      .mockResolvedValue(HISTORY)
-    const user = renderPage()
+  it('shows who closed a ticket', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'closed' })
+    vi.mocked(listStatusHistory).mockResolvedValue([
+      ...RESOLVED_HISTORY,
+      change(6, 'resolved', 'closed', { changed_by_user_id: 9, changed_by_name: 'Ada Admin', changed_by_role: 'admin', reason: 'Confirmed with Jane' }),
+    ])
+    renderPage()
     await heading()
-
-    const history = within(panel('Status history'))
-    await user.click(await history.findByRole('button', { name: 'Try again' }))
-    expect(await history.findByText('Reopened → Open')).toBeInTheDocument()
+    expect(await screen.findByText(`Ada Admin closed it ${at(6)}`)).toBeInTheDocument()
+    expect(currentStep()).toHaveTextContent('“Confirmed with Jane”')
+    expect(currentStep()).toHaveTextContent('Closed (current status)')
   })
 
-  it('works on a phone', async () => {
-    vi.mocked(listStatusHistory).mockResolvedValue(HISTORY)
-    renderPage('/tickets/5', 375)
+  it('says "Reopened", and what is still wrong, when a finished ticket goes back to work', async () => {
+    vi.mocked(listStatusHistory).mockResolvedValue([
+      ...RESOLVED_HISTORY,
+      change(6, 'resolved', 'in_progress', { changed_by_user_id: 9, changed_by_name: 'Ada Admin', changed_by_role: 'admin', reason: 'Jammed again the next day' }),
+    ])
+    renderPage()
     await heading()
-    expect(await rows()).toHaveLength(6)
+    expect(await screen.findByText(`Reopened ${at(6)}`)).toBeInTheDocument()
+    expect(currentStep()).toHaveTextContent(`In Progress (current status)Reopened ${at(6)}“Jammed again the next day”`)
+    // Only reached steps show a reason: the old resolve summary is gone with the reopen.
+    expect(screen.queryByText('“New roller fitted”')).not.toBeInTheDocument()
+  })
+
+  it('says "Reopened", and why, when a finished ticket goes back to Open', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'open' })
+    vi.mocked(listStatusHistory).mockResolvedValue([
+      ...RESOLVED_HISTORY,
+      change(6, 'resolved', 'open', { changed_by_user_id: 9, changed_by_name: 'Ada Admin', changed_by_role: 'admin', reason: 'Jammed again' }),
+    ])
+    renderPage()
+    await heading()
+    expect(await screen.findByText(`Reopened ${at(6)}`)).toBeInTheDocument()
+    expect(currentStep()).toHaveTextContent(`Open (current status)Reopened ${at(6)}“Jammed again”`)
+    expect(steps()[1]).toHaveTextContent('In Progress (not reached yet)—')
+  })
+
+  it('names you when you made the change', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'closed' })
+    vi.mocked(listStatusHistory).mockResolvedValue([
+      ...RESOLVED_HISTORY,
+      change(6, 'resolved', 'closed', { changed_by_user_id: JANE.user_id, changed_by_name: 'Jane Doe', changed_by_role: 'employee' }),
+    ])
+    renderPage()
+    await heading()
+    expect(await screen.findByText(`You closed it ${at(6)}`)).toBeInTheDocument()
+  })
+
+  it('still shows the steps when the history fails to load, just without their times', async () => {
+    vi.mocked(listStatusHistory).mockRejectedValue(new ApiError("Can't reach the server.", { status: 0 }))
+    renderPage()
+    await heading()
+    await waitFor(() => expect(listStatusHistory).toHaveBeenCalled())
+
+    expect(steps()).toHaveLength(5)
+    expect(steps()[1].textContent).toBe('In Progress (current status)')
   })
 })
 
@@ -271,14 +319,14 @@ describe('TicketDetailsPage: notes', () => {
     renderPage()
     await heading()
     const notes = within(panel('Notes'))
+    expect(notes.getByText('your conversation with the engineer')).toBeInTheDocument()
     const items = await notes.findAllByRole('listitem')
-    expect(items[0]).toHaveTextContent(/^Sam Tech · Engineer · .+Ordering a roller\.$/)
-    expect(items[1]).toHaveTextContent(/^You · Employee · .+Thanks!$/)
+    expect(items[0]).toHaveTextContent(/^Sam Tech · Engineer · .+ ago\s*Ordering a roller\.$/)
+    expect(items[1]).toHaveTextContent(/^You · Employee · .+ ago\s*Thanks!$/)
   })
 
   it('shows a placeholder while notes load', async () => {
-    vi.mocked(listNotes)
-      .mockReturnValueOnce(new Promise(() => {}))
+    vi.mocked(listNotes).mockReturnValueOnce(new Promise(() => {}))
     renderPage()
     await heading()
     expect(within(panel('Notes')).getByLabelText('Loading notes')).toBeInTheDocument()
@@ -300,7 +348,7 @@ describe('TicketDetailsPage: notes', () => {
     expect(await notes.findByText('Ordering a roller.')).toBeInTheDocument()
   })
 
-  it('adds a note, then refreshes the ticket and notes', async () => {
+  it('sends a note, then refreshes the ticket and notes', async () => {
     vi.mocked(addNote).mockResolvedValue({ note_id: 3 })
     const user = renderPage()
     await heading()
@@ -308,8 +356,7 @@ describe('TicketDetailsPage: notes', () => {
     const box = notes.getByRole('textbox', { name: 'Add a note' })
 
     await user.type(box, 'It jammed again.')
-    expect(notes.getByText('16/2000')).toBeInTheDocument()
-    await user.click(notes.getByRole('button', { name: 'Add note' }))
+    await user.click(notes.getByRole('button', { name: 'Send' }))
 
     expect(addNote).toHaveBeenCalledWith(5, 'It jammed again.')
     await waitFor(() => expect(box).toHaveValue(''))
@@ -317,30 +364,48 @@ describe('TicketDetailsPage: notes', () => {
     expect(getMyTicket).toHaveBeenCalledTimes(2)
   })
 
+  it('sends with Enter', async () => {
+    vi.mocked(addNote).mockResolvedValue({ note_id: 3 })
+    const user = renderPage()
+    await heading()
+
+    await user.type(within(panel('Notes')).getByRole('textbox', { name: 'Add a note' }), 'Still jammed{Enter}')
+
+    expect(addNote).toHaveBeenCalledWith(5, 'Still jammed')
+  })
+
   it('refuses an empty note and clears the message on typing', async () => {
     const user = renderPage()
     await heading()
     const notes = within(panel('Notes'))
 
-    await user.click(notes.getByRole('button', { name: 'Add note' }))
-    expect(notes.getByText('Write a note first.')).toBeInTheDocument()
+    await user.click(notes.getByRole('button', { name: 'Send' }))
+    expect(notes.getByRole('alert')).toHaveTextContent('Write a note first.')
+    expect(notes.getByRole('textbox', { name: 'Add a note' })).toHaveAttribute('aria-invalid', 'true')
     expect(addNote).not.toHaveBeenCalled()
 
     await user.type(notes.getByRole('textbox', { name: 'Add a note' }), 'x')
     expect(notes.queryByText('Write a note first.')).not.toBeInTheDocument()
   })
 
-  it('refuses a note that is too long', async () => {
+  it('counts characters only near the limit, and refuses a note that is too long', async () => {
     const user = renderPage()
     await heading()
     const notes = within(panel('Notes'))
     const box = notes.getByRole('textbox', { name: 'Add a note' })
+
+    await user.type(box, 'short')
+    expect(notes.queryByText(/\/2000$/)).not.toBeInTheDocument()
+
+    await user.clear(box)
     await user.click(box)
-    await user.paste('x'.repeat(2001))
+    await user.paste('x'.repeat(1900))
+    expect(notes.getByText('1900/2000')).toBeInTheDocument()
 
-    await user.click(notes.getByRole('button', { name: 'Add note' }))
-
-    expect(notes.getByText('Use 2000 characters or fewer.')).toBeInTheDocument()
+    await user.paste('x'.repeat(101))
+    await user.click(notes.getByRole('button', { name: 'Send' }))
+    expect(notes.getByRole('alert')).toHaveTextContent('Use 2000 characters or fewer.')
+    expect(addNote).not.toHaveBeenCalled()
   })
 
   it('disables the note box while sending', async () => {
@@ -350,9 +415,9 @@ describe('TicketDetailsPage: notes', () => {
     const notes = within(panel('Notes'))
     await user.type(notes.getByRole('textbox', { name: 'Add a note' }), 'hi')
 
-    await user.click(notes.getByRole('button', { name: 'Add note' }))
+    await user.click(notes.getByRole('button', { name: 'Send' }))
 
-    expect(notes.getByRole('button', { name: 'Adding note…' })).toBeDisabled()
+    expect(notes.getByRole('button', { name: 'Sending…' })).toBeDisabled()
     expect(notes.getByRole('textbox', { name: 'Add a note' })).toBeDisabled()
   })
 
@@ -366,108 +431,177 @@ describe('TicketDetailsPage: notes', () => {
     const notes = within(panel('Notes'))
     await user.type(notes.getByRole('textbox', { name: 'Add a note' }), 'hello')
 
-    await user.click(notes.getByRole('button', { name: 'Add note' }))
+    await user.click(notes.getByRole('button', { name: 'Send' }))
 
-    expect(await notes.findByText(message)).toBeInTheDocument()
+    expect(await notes.findByRole('alert')).toHaveTextContent(message)
     expect(notes.getByRole('textbox', { name: 'Add a note' })).toHaveValue('hello')
   })
 })
 
 describe('TicketDetailsPage: escalation', () => {
-  it('asks for a reason, sends it, then refreshes', async () => {
+  const escalation = () => within(panel('Escalation'))
+
+  it('explains when to escalate, asks what changed, sends it, then refreshes', async () => {
     vi.mocked(requestEscalation).mockResolvedValue({})
     const user = renderPage()
     await heading()
+    expect(escalation().getByText(/Only escalate if the issue has become more urgent/)).toBeInTheDocument()
 
-    await user.click(within(panel('Escalation')).getByRole('button', { name: 'Request escalation' }))
-    const dialog = screen.getByRole('dialog', { name: 'Request escalation' })
-    await user.click(within(dialog).getByRole('button', { name: 'Request escalation' }))
-    expect(within(dialog).getByText('Tell the facility admin why this needs more attention.')).toBeInTheDocument()
+    await user.click(escalation().getByRole('button', { name: 'Escalate' }))
+    await user.click(escalation().getByRole('button', { name: 'Escalate ticket' }))
+    expect(escalation().getByText('Tell the facility admin what changed.')).toBeInTheDocument()
 
-    await user.type(within(dialog).getByRole('textbox'), 'Payroll is due today.')
-    await user.click(within(dialog).getByRole('button', { name: 'Request escalation' }))
+    await user.type(escalation().getByRole('textbox', { name: 'What changed?' }), 'Payroll is due today.')
+    await user.click(escalation().getByRole('button', { name: 'Escalate ticket' }))
 
     expect(requestEscalation).toHaveBeenCalledWith(5, 'Payroll is due today.')
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(escalation().queryByRole('textbox')).not.toBeInTheDocument())
     expect(getMyTicket).toHaveBeenCalledTimes(2)
+    expect(listNotes).toHaveBeenCalledTimes(2)
   })
 
   it('limits the reason length and can be cancelled', async () => {
     const user = renderPage()
     await heading()
-    await user.click(within(panel('Escalation')).getByRole('button', { name: 'Request escalation' }))
-    const dialog = screen.getByRole('dialog')
-    await user.click(within(dialog).getByRole('textbox'))
+    await user.click(escalation().getByRole('button', { name: 'Escalate' }))
+    const box = escalation().getByRole('textbox', { name: 'What changed?' })
+    expect(box).toHaveFocus()
     await user.paste('x'.repeat(1001))
 
-    await user.click(within(dialog).getByRole('button', { name: 'Request escalation' }))
-    expect(within(dialog).getByText('Use 1000 characters or fewer.')).toBeInTheDocument()
+    await user.click(escalation().getByRole('button', { name: 'Escalate ticket' }))
+    expect(escalation().getByText('Use 1000 characters or fewer.')).toBeInTheDocument()
 
-    await user.type(within(dialog).getByRole('textbox'), 'y')
-    expect(within(dialog).queryByText('Use 1000 characters or fewer.')).not.toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await user.type(box, 'y')
+    expect(escalation().queryByText('Use 1000 characters or fewer.')).not.toBeInTheDocument()
+    await user.click(escalation().getByRole('button', { name: 'Cancel' }))
+    expect(escalation().queryByRole('textbox')).not.toBeInTheDocument()
+    expect(escalation().getByRole('button', { name: 'Escalate' })).toBeInTheDocument()
     expect(requestEscalation).not.toHaveBeenCalled()
   })
 
-  it('disables the dialog while sending', async () => {
+  it('disables the form while sending', async () => {
     vi.mocked(requestEscalation).mockReturnValue(new Promise(() => {}))
     const user = renderPage()
     await heading()
-    await user.click(within(panel('Escalation')).getByRole('button', { name: 'Request escalation' }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByRole('textbox'), 'Urgent')
+    await user.click(escalation().getByRole('button', { name: 'Escalate' }))
+    await user.type(escalation().getByRole('textbox', { name: 'What changed?' }), 'Urgent')
 
-    await user.click(within(dialog).getByRole('button', { name: 'Request escalation' }))
+    await user.click(escalation().getByRole('button', { name: 'Escalate ticket' }))
 
-    expect(within(dialog).getByRole('button', { name: 'Sending…' })).toBeDisabled()
-    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(escalation().getByRole('button', { name: 'Sending…' })).toBeDisabled()
+    expect(escalation().getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(escalation().getByRole('textbox', { name: 'What changed?' })).toBeDisabled()
   })
 
   it.each([
     ['API error', new ApiError('Escalation has already been requested for this ticket', { status: 409 }), 'Escalation has already been requested for this ticket'],
     ['unexpected error', new TypeError('boom'), 'Something went wrong. Please try again.'],
-  ])('shows an %s in the dialog', async (_label, error, message) => {
+  ])('shows an %s under the reason and keeps it', async (_label, error, message) => {
     vi.mocked(requestEscalation).mockRejectedValue(error)
     const user = renderPage()
     await heading()
-    await user.click(within(panel('Escalation')).getByRole('button', { name: 'Request escalation' }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByRole('textbox'), 'Urgent')
+    await user.click(escalation().getByRole('button', { name: 'Escalate' }))
+    await user.type(escalation().getByRole('textbox', { name: 'What changed?' }), 'Urgent')
 
-    await user.click(within(dialog).getByRole('button', { name: 'Request escalation' }))
+    await user.click(escalation().getByRole('button', { name: 'Escalate ticket' }))
 
-    expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    expect(await escalation().findByText(message)).toBeInTheDocument()
+    expect(escalation().getByRole('textbox', { name: 'What changed?' })).toHaveValue('Urgent')
   })
 
   it('shows an escalation already requested, with the reason', async () => {
     vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, escalation_requested: true, escalation_reason: 'Payroll is due today.' })
     renderPage()
     await heading()
-    const escalation = within(panel('Escalation'))
-    expect(escalation.getByText('Escalation requested.')).toBeInTheDocument()
-    expect(escalation.getByText('Your reason: Payroll is due today.')).toBeInTheDocument()
-    expect(escalation.queryByRole('button', { name: 'Request escalation' })).not.toBeInTheDocument()
+    expect(escalation().getByText('Escalation requested')).toBeInTheDocument()
+    expect(escalation().getByText(/Payroll is due today\./)).toBeInTheDocument()
+    expect(escalation().getByText('The facility admin has been notified.')).toBeInTheDocument()
+    expect(escalation().queryByRole('button')).not.toBeInTheDocument()
   })
 })
 
 describe('TicketDetailsPage: closed tickets', () => {
-  it('shows history but no note box or escalation', async () => {
+  beforeEach(() => {
     vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'closed', resolved_at: '2026-09-22T15:00:00-04:00' })
+  })
+
+  it('keeps the notes readable but has no note box or escalation', async () => {
     renderPage()
     await heading()
 
     expect(within(panel('Notes')).getByText("This ticket is closed, so new notes can't be added.")).toBeInTheDocument()
     expect(within(panel('Notes')).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(panel('Escalation')).getByText("Closed tickets can't be escalated.")).toBeInTheDocument()
-    expect(within(panel('Details')).getByText('Resolved')).toBeInTheDocument()
     expect(await within(panel('Notes')).findByText('Ordering a roller.')).toBeInTheDocument()
+    expect(currentStep()).toHaveTextContent('Closed (current status)')
   })
 
   it('still shows an escalation made before closing', async () => {
     vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'closed', escalation_requested: true, escalation_reason: 'x' })
     renderPage()
     await heading()
-    expect(within(panel('Escalation')).getByText('Escalation requested.')).toBeInTheDocument()
+    expect(within(panel('Escalation')).getByText('Escalation requested')).toBeInTheDocument()
+  })
+})
+
+describe('TicketDetailsPage: on a phone', () => {
+  const tab = (name) => screen.getByRole('tab', { name })
+
+  it('shows a summary, then opens on the Notes tab', async () => {
+    renderPage('/tickets/5', 375)
+    await heading()
+
+    expect(await screen.findByText(`In Progress since ${at(2)} · Next: Resolved`)).toBeInTheDocument()
+    expect(screen.getByText('Sam Tech')).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: 'Notes (2)' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(screen.getByRole('tabpanel')).getByText('Ordering a roller.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Details' })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/priority|\bP[123]\b/i)
+  })
+
+  it('says what holds up a blocked ticket in the summary', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
+    renderPage('/tickets/5', 375)
+    await heading()
+    expect(screen.getByText('Blocked: Waiting on parts')).toBeInTheDocument()
+  })
+
+  it('sends a note with the icon button', async () => {
+    vi.mocked(addNote).mockResolvedValue({ note_id: 3 })
+    const user = renderPage('/tickets/5', 375)
+    await heading()
+
+    await user.type(screen.getByRole('textbox', { name: 'Add a note' }), 'On my way out')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(addNote).toHaveBeenCalledWith(5, 'On my way out')
+  })
+
+  it('has the details and escalation on the Details tab', async () => {
+    vi.mocked(requestEscalation).mockResolvedValue({})
+    const user = renderPage('/tickets/5', 375)
+    await heading()
+
+    await user.click(tab('Details'))
+    expect(within(panel('Details')).getByText('Printer / Peripheral')).toBeInTheDocument()
+    await user.click(within(panel('Escalation')).getByRole('button', { name: 'Escalate this ticket' }))
+    await user.type(screen.getByRole('textbox', { name: 'What changed?' }), 'Payroll is due today.')
+    await user.click(screen.getByRole('button', { name: 'Escalate ticket' }))
+
+    expect(requestEscalation).toHaveBeenCalledWith(5, 'Payroll is due today.')
+  })
+
+  it('lists the steps with their times on the Progress tab', async () => {
+    vi.mocked(getMyTicket).mockResolvedValue({ ...TICKET, status: 'resolved' })
+    vi.mocked(listStatusHistory).mockResolvedValue(RESOLVED_HISTORY)
+    const user = renderPage('/tickets/5', 375)
+    await heading()
+
+    await user.click(tab('Progress'))
+    expect(steps()).toHaveLength(5)
+    expect(await screen.findByText(`Sam Tech resolved it ${at(5)}`)).toBeInTheDocument()
+    expect(currentStep()).toHaveTextContent('Resolved (current status)')
+    // The phone list has room, so the reason isn't cut or given a tooltip.
+    expect(screen.getByText('“New roller fitted”')).not.toHaveAttribute('title')
   })
 })

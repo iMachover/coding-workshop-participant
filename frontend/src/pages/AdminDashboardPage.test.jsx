@@ -4,13 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
 import { getFacilities } from '../services/adminFacilityService'
-import { assignTicket, getMetrics, listAllTickets } from '../services/adminTicketService'
+import { assignTicket, getMetrics, getTicket, listAllTickets } from '../services/adminTicketService'
 import { listEngineers } from '../services/adminUserService'
 import { ApiError } from '../services/apiClient'
 import { ADMIN_TICKETS, ENGINEERS } from '../test/fixtures'
 import { ALEX, renderWithProviders } from '../test/renderWithProviders'
 
-vi.mock('../services/adminTicketService', () => ({ listAllTickets: vi.fn(), assignTicket: vi.fn(), getMetrics: vi.fn() }))
+vi.mock('../services/adminTicketService', () => ({
+  listAllTickets: vi.fn(),
+  assignTicket: vi.fn(),
+  getMetrics: vi.fn(),
+  // Only reached when a test opens a ticket; it stays loading.
+  getTicket: vi.fn(() => new Promise(() => {})),
+  listTicketNotes: vi.fn(() => new Promise(() => {})),
+  listTicketHistory: vi.fn(() => new Promise(() => {})),
+}))
 vi.mock('../services/adminUserService', () => ({ listEngineers: vi.fn() }))
 vi.mock('../services/adminFacilityService', () => ({ getFacilities: vi.fn() }))
 
@@ -23,7 +31,7 @@ const METRICS = {
   resolved: 0,
   active_p1: 1,
   escalated: 1,
-  closed_last_7_days: 1,
+  closed: 1,
 }
 
 // GET /admin/facilities, trimmed to what the Building filter reads. Building B is inactive,
@@ -60,8 +68,9 @@ function renderDashboard({ width = 1280 } = {}) {
 
 const queue = () => screen.getByRole('region', { name: /Needs an engineer/ })
 const table = () => screen.getByRole('table', { name: 'All tickets' })
+// Each row's title: the first text in its "Title · location" cell.
 const rowTitles = () =>
-  within(table()).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent)
+  within(table()).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[1].querySelector('span').textContent)
 // The queue always asks for exactly this; every other call is the all-tickets list.
 const QUEUE_FILTERS = { assignment: 'unassigned', view: 'active' }
 const lastListFilters = () =>
@@ -90,12 +99,11 @@ describe('AdminDashboardPage: needs an engineer', () => {
     const cards = await within(queue()).findAllByRole('listitem')
     expect(listAllTickets).toHaveBeenCalledWith(QUEUE_FILTERS, expect.anything())
     expect(within(queue()).getByLabelText('2 unassigned')).toHaveTextContent('2')
-    expect(cards.map((card) => within(card).getByText(/^#\d+/).textContent)).toEqual([
-      '#7 Lobby lights out',
-      '#1 Wi-Fi keeps dropping',
-    ])
+    expect(cards.map((card) => within(card).getByRole('link').textContent)).toEqual(['#7', '#1'])
+    expect(cards[0]).toHaveTextContent('Lobby lights out')
+    expect(cards[1]).toHaveTextContent('Wi-Fi keeps dropping')
     expect(within(cards[0]).getByLabelText('Priority P1: Building-wide')).toBeInTheDocument()
-    expect(within(cards[0]).getByText(/^Eve Other · waiting \d+ (min|h|d)$/)).toBeInTheDocument()
+    expect(within(cards[0]).getByLabelText(/^waiting \d+ (min|h|d)$/)).toBeInTheDocument()
     expect(within(cards[0]).queryByText('Escalated')).not.toBeInTheDocument()
     expect(within(cards[1]).getByText('Escalated')).toBeInTheDocument()
     expect(within(cards[1]).getByRole('link')).toHaveAttribute('href', '/admin/tickets/1')
@@ -130,23 +138,39 @@ describe('AdminDashboardPage: needs an engineer', () => {
 })
 
 describe('AdminDashboardPage: all tickets', () => {
-  it('starts on active tickets in triage order, with requester and engineer', async () => {
+  it('starts on active tickets in triage order, with category, engineer and age', async () => {
     renderDashboard()
     await screen.findByRole('table')
 
     expect(rowTitles()).toEqual(['Lobby lights out', 'Printer jam', 'Wi-Fi keeps dropping'])
     expect(lastListFilters()).toEqual({ view: 'active' })
-    const [lights, printer] = within(table()).getAllByRole('row').slice(1)
+    expect(screen.getByText('Active tickets · 3')).toBeInTheDocument()
+    const [lights, printer, wifi] = within(table()).getAllByRole('row').slice(1)
     expect(within(lights).getByLabelText('Priority P1: Building-wide')).toBeInTheDocument()
-    expect(lights).toHaveTextContent('Eve Other')
+    expect(lights).toHaveTextContent('Electrical / Power')
     expect(lights).toHaveTextContent('Unassigned')
     expect(lights).toHaveTextContent('Building B')
+    expect(within(lights).getAllByRole('cell').at(-1)).toHaveTextContent(/^\d+ (min|h|d)$/)
     expect(printer).toHaveTextContent('In Progress')
     expect(printer).toHaveTextContent('Sam Tech')
-    expect(within(printer).getByRole('link', { name: 'Printer jam' })).toHaveAttribute('href', '/admin/tickets/5')
+    expect(within(printer).getByRole('link', { name: '#5' })).toHaveAttribute('href', '/admin/tickets/5')
+    expect(within(lights).queryByRole('img', { name: 'Escalated' })).not.toBeInTheDocument()
+    expect(within(wifi).getByRole('img', { name: 'Escalated' })).toBeInTheDocument()
   })
 
-  it('filters by status, priority, category, building and assignment', async () => {
+  it('opens a ticket from anywhere on its row', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    await user.click(within(table()).getByText('Printer jam'))
+
+    // The details page takes over.
+    expect(await screen.findByLabelText('Loading ticket')).toBeInTheDocument()
+    expect(getTicket).toHaveBeenCalledWith({ ticketId: '5' }, expect.anything())
+    expect(screen.queryByRole('table', { name: 'All tickets' })).not.toBeInTheDocument()
+  })
+
+  it('filters by status, priority, category and building', async () => {
     const user = renderDashboard()
     await screen.findByRole('table')
 
@@ -156,11 +180,10 @@ describe('AdminDashboardPage: all tickets', () => {
 
     await choose(user, 'Priority', 'All priorities')
     await choose(user, 'Building', 'Building A')
-    await choose(user, 'Assignment', 'Assigned')
-    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam']))
-    expect(lastListFilters()).toEqual({ view: 'active', building_id: '1', assignment: 'assigned' })
+    await waitFor(() => expect(rowTitles()).toEqual(['Printer jam', 'Wi-Fi keeps dropping']))
+    expect(lastListFilters()).toEqual({ view: 'active', building_id: '1' })
+    expect(screen.queryByRole('combobox', { name: 'Assignment' })).not.toBeInTheDocument()
 
-    await choose(user, 'Assignment', 'Assigned or not')
     await choose(user, 'Category', 'Network / Internet')
     await choose(user, 'Status', 'Open')
     await waitFor(() => expect(rowTitles()).toEqual(['Wi-Fi keeps dropping']))
@@ -215,14 +238,22 @@ describe('AdminDashboardPage: all tickets', () => {
     expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('')
   })
 
-  it('shows cards instead of a table on phones', async () => {
-    renderDashboard({ width: 375 })
-    const list = await screen.findByText('#5 Printer jam')
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
-    const card = list.closest('a')
-    expect(card).toHaveAttribute('href', '/admin/tickets/5')
-    expect(card).toHaveTextContent('Engineer: Sam Tech')
-    expect(within(card).getByLabelText('Priority P2: A whole floor')).toBeInTheDocument()
+  it('pages through long lists, and starts again on page one when the filters change', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...ADMIN_TICKETS[0], ticket_id: 100 + i, title: `Ticket ${i + 1}` }))
+    vi.mocked(listAllTickets).mockImplementation((filters) =>
+      filters.assignment === 'unassigned' || filters.priority ? fakeApi(filters) : Promise.resolve(many),
+    )
+    const user = renderDashboard()
+    await screen.findByRole('table')
+
+    expect(rowTitles()).toHaveLength(25)
+    expect(screen.getByText('1–25 of 30')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+    expect(rowTitles()).toEqual(['Ticket 26', 'Ticket 27', 'Ticket 28', 'Ticket 29', 'Ticket 30'])
+
+    await choose(user, 'Priority', 'P1 · Building-wide')
+    await waitFor(() => expect(rowTitles()).toEqual(['Lobby lights out']))
+    expect(screen.getByText('1–1 of 1')).toBeInTheDocument()
   })
 })
 
@@ -230,17 +261,18 @@ describe('AdminDashboardPage: assigning from the queue', () => {
   const queueCard = async (title) =>
     (await within(queue()).findAllByRole('listitem')).find((card) => within(card).queryByText(new RegExp(title)))
 
-  it('assigns a ticket in place, showing each engineer\'s load, then refreshes everything', async () => {
+  it('suggests the lightest-loaded engineer, so assigning takes one click, then refreshes everything', async () => {
     vi.mocked(assignTicket).mockResolvedValue({ ...ADMIN_TICKETS[0], assigned_to_user_id: 6, assigned_to_name: 'Kim Fixit' })
     const user = renderDashboard()
     const card = await queueCard('Lobby lights out')
     const assign = within(card).getByRole('button', { name: 'Assign' })
-    expect(assign).toBeDisabled()
+    await waitFor(() => expect(within(card).getByRole('combobox', { name: 'Assign to' })).toHaveTextContent('Kim Fixit · 0 active'))
+    expect(assign).toBeEnabled()
 
     await user.click(within(card).getByRole('combobox', { name: 'Assign to' }))
     const options = screen.getAllByRole('option').map((o) => o.textContent)
     expect(options).toEqual(['Kim Fixit · 0 active', 'Sam Tech · 3 active, 1 P1'])
-    await user.click(screen.getByRole('option', { name: 'Kim Fixit · 0 active' }))
+    await user.keyboard('{Escape}')
     const [queueCalls, engineerCalls] = [listAllTickets, listEngineers].map((fn) => vi.mocked(fn).mock.calls.length)
     await user.click(assign)
 
@@ -378,25 +410,24 @@ describe('AdminDashboardPage: metric cards', () => {
   it('shows each count', async () => {
     renderDashboard()
     const cards = await within(await screen.findByRole('list', { name: 'Tickets in numbers' })).findAllByRole('button')
+    // Active adds up open, in progress, blocked and resolved: 2 + 1 + 0 + 0.
     expect(cards.map((c) => c.textContent)).toEqual([
-      'Unassigned2',
-      'Open2',
-      'In Progress1',
-      'Blocked0',
-      'Ready to close0',
-      'Active P11',
-      'Escalated1',
-      'Closed (7 days)1',
+      'Active3open tickets',
+      'Unassigned2need engineer',
+      'Escalated1by requesters',
+      'Blocked0waiting',
+      'Resolved0awaiting close',
+      'Closed1all time',
     ])
+    expect(screen.queryByRole('button', { name: /P1/ })).not.toBeInTheDocument()
   })
 
   it.each([
     ['Unassigned', { view: 'active', assignment: 'unassigned' }],
-    ['Open', { view: 'active', status: 'open' }],
-    ['Ready to close', { view: 'active', status: 'resolved' }],
-    ['Active P1', { view: 'active', priority: 'P1' }],
     ['Escalated', { view: 'active', escalated: true }],
-    ['Closed \\(7 days\\)', { view: 'closed' }],
+    ['Blocked', { view: 'active', status: 'blocked' }],
+    ['Resolved', { view: 'active', status: 'resolved' }],
+    ['Closed', { view: 'closed' }],
   ])('%s shows exactly its tickets, and again clears it', async (label, query) => {
     const user = renderDashboard()
     await screen.findByRole('table')
@@ -410,6 +441,34 @@ describe('AdminDashboardPage: metric cards', () => {
     await user.click(card(label))
     await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active' }))
     expect(card(label)).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('names the chosen card above the table, and its chip clears it', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    await screen.findByRole('list', { name: 'Tickets in numbers' })
+
+    await user.click(card('Escalated'))
+    const panel = screen.getByRole('region', { name: 'All tickets' })
+    const chip = await within(panel).findByRole('button', { name: 'Escalated' })
+
+    await user.click(within(chip).getByTestId('CancelIcon'))
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active' }))
+    expect(within(panel).queryByRole('button', { name: 'Escalated' })).not.toBeInTheDocument()
+  })
+
+  it('Active goes back to every active ticket and is never shown as pressed', async () => {
+    const user = renderDashboard()
+    await screen.findByRole('table')
+    await screen.findByRole('list', { name: 'Tickets in numbers' })
+    expect(card('Active')).not.toHaveAttribute('aria-pressed')
+
+    await choose(user, 'Priority', 'P1 · Building-wide')
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active', priority: 'P1' }))
+    await user.click(card('Active'))
+
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active' }))
+    expect(screen.getByRole('combobox', { name: 'Priority' })).toHaveTextContent('Priority')
   })
 
   it('shows as selected when the filters match a card by hand', async () => {
@@ -443,13 +502,88 @@ describe('AdminDashboardPage: metric cards', () => {
     vi.mocked(assignTicket).mockResolvedValue({ ...ADMIN_TICKETS[0], assigned_to_user_id: 6, assigned_to_name: 'Kim Fixit' })
     const user = renderDashboard()
     const card7 = (await within(queue()).findAllByRole('listitem')).find((c) => within(c).queryByText(/#7/))
-    await user.click(within(card7).getByRole('combobox', { name: 'Assign to' }))
-    await user.click(screen.getByRole('option', { name: 'Kim Fixit · 0 active' }))
+    await waitFor(() => expect(within(card7).getByRole('button', { name: 'Assign' })).toBeEnabled())
     const loads = vi.mocked(getMetrics).mock.calls.length
 
     await user.click(within(card7).getByRole('button', { name: 'Assign' }))
 
     await screen.findByText('#7 assigned to Kim Fixit.')
     expect(vi.mocked(getMetrics).mock.calls.length).toBe(loads + 1)
+  })
+})
+
+describe('AdminDashboardPage: on a phone', () => {
+  const renderPhone = () => renderDashboard({ width: 375 })
+  const tab = (name) => screen.getByRole('tab', { name: new RegExp(`^${name}`) })
+
+  it('opens on the queue tab, with its count, as cards with a one-click assign', async () => {
+    renderPhone()
+    const cards = await within(queue()).findAllByRole('listitem')
+
+    expect(tab('Queue')).toHaveAttribute('aria-selected', 'true')
+    expect(tab('Queue')).toHaveTextContent('Queue2')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(cards[0]).toHaveTextContent('Lobby lights out')
+    expect(cards[0]).toHaveTextContent('Building B')
+    await waitFor(() => expect(within(cards[0]).getByRole('button', { name: 'Assign' })).toBeEnabled())
+    // The heading is still there for screen readers, though the tab names it on screen.
+    expect(screen.getByRole('heading', { level: 2, name: 'Needs an engineer' })).toBeInTheDocument()
+  })
+
+  it('shows tickets as cards on the Tickets tab', async () => {
+    const user = renderPhone()
+    await user.click(tab('Tickets'))
+
+    const card = (await screen.findByText('Printer jam')).closest('a')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(card).toHaveAttribute('href', '/admin/tickets/5')
+    expect(card).toHaveTextContent('#5')
+    expect(card).toHaveTextContent('Sam Tech')
+    expect(within(card).getByLabelText('Priority P2: A whole floor')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /Needs an engineer/ })).not.toBeInTheDocument()
+  })
+
+  it('jumps to Tickets, filtered, when a count is tapped', async () => {
+    const user = renderPhone()
+    const numbers = await screen.findByRole('list', { name: 'Tickets in numbers' })
+
+    await user.click(within(numbers).getByRole('button', { name: /^Escalated:/ }))
+
+    expect(tab('Tickets')).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active', escalated: true }))
+    expect(await screen.findByText('Wi-Fi keeps dropping')).toBeInTheDocument()
+    expect(screen.queryByText('Printer jam')).not.toBeInTheDocument()
+  })
+
+  it('keeps search on screen and folds the other filters behind a button', async () => {
+    const user = renderPhone()
+    await user.click(tab('Tickets'))
+    await screen.findByText('Printer jam')
+
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Priority' })).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: 'Show filters' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide filters' })).toHaveAttribute('aria-expanded', 'true')
+    await choose(user, 'Priority', 'P1 · Building-wide')
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active', priority: 'P1' }))
+
+    await user.click(screen.getByRole('button', { name: 'Closed' }))
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'closed', priority: 'P1' }))
+    expect(await screen.findByText('No tickets match these filters.')).toBeInTheDocument()
+  })
+
+  it('shows the workload on the Engineers tab; tapping one lists their tickets', async () => {
+    const user = renderPhone()
+    await user.click(tab('Engineers'))
+    const workload = screen.getByRole('region', { name: 'Engineer workload' })
+
+    await user.click(await within(workload).findByRole('button', { name: /^Sam Tech/ }))
+
+    expect(tab('Tickets')).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(lastListFilters()).toEqual({ view: 'active', assigned_to: '4' }))
+    expect(await screen.findByText('Printer jam')).toBeInTheDocument()
   })
 })

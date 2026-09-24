@@ -81,19 +81,61 @@ describe('FacilitiesPage: browsing', () => {
     await screen.findByRole('list', { name: 'Buildings' })
 
     const [first, second] = within(buildingList()).getAllByRole('button')
-    expect(first).toHaveTextContent('Building A2 floors · 2 active tickets')
+    // Name, "floors · seats", then (for screen readers; a dot on screen) that it has tickets.
+    expect(first).toHaveTextContent(/^Building A2 floors · 3 seats, has active tickets$/)
     expect(first).toHaveAttribute('aria-current', 'true')
-    expect(second).toHaveTextContent('2 floors · 0 active tickets · Inactive')
+    expect(second).toHaveTextContent(/^Building B2 floors · 0 seatsInactive$/)
 
     expect(within(details()).getByRole('heading', { level: 2 })).toHaveTextContent('Building A')
-    expect(within(details()).getByRole('link', { name: '2 active tickets' })).toHaveAttribute('href', '/admin?building=1')
+    // The page's only ticket total, which opens them on the dashboard.
+    expect(within(details()).getByRole('link', { name: '2 active tickets in total' })).toHaveAttribute(
+      'href',
+      '/admin?building=1',
+    )
+    // The first floor starts chosen, with its seats beside the floor list.
+    expect(within(details()).getByRole('button', { name: /^Floor 1,/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('group', { name: 'Seats on Floor 1' })).toBeInTheDocument()
+    // Floors and seats show a dot for tickets, never a count to add up.
     expect(within(details()).getByRole('button', { name: 'Floor 3, 2 seats, 2 active tickets' })).toHaveTextContent(
-      'Floor 32 seats · 2 active tickets',
+      /^Floor 32 seats$/,
     )
 
     const seats = await openFloor(user, 3)
-    expect(within(seats).getByRole('button', { name: 'Seat 301, 2 active tickets' })).toHaveTextContent('301 · 2')
+    expect(within(details()).getByRole('button', { name: /^Floor 3,/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.queryByRole('group', { name: 'Seats on Floor 1' })).not.toBeInTheDocument()
+    const seat301 = within(seats).getByRole('button', { name: 'Seat 301, 2 active tickets' })
+    expect(seat301).toHaveTextContent(/^301$/)
+    expect(seat301).toHaveAttribute('title', '301 · 2 active tickets')
     expect(within(seats).getByRole('button', { name: 'Seat 302, inactive' })).toBeInTheDocument()
+  })
+
+  it('points out tickets for a whole floor or building, which no seat or floor shows', async () => {
+    // Building A: 7 active tickets, 6 on its floors and 1 building-wide.
+    // Floor 1: 2, both at seat 101. Floor 3: 4, 2 at seat 301 and 2 floor-wide.
+    const [buildingA, buildingB] = FACILITIES
+    const floor1 = { ...buildingA.floors[0], active_ticket_count: 2, seats: [seat(1, '101', 1, { active_ticket_count: 2 })] }
+    const floor3 = { ...buildingA.floors[1], active_ticket_count: 4 }
+    vi.mocked(getFacilities).mockResolvedValue([{ ...buildingA, active_ticket_count: 7, floors: [floor1, floor3] }, buildingB])
+    const user = renderPage()
+    await screen.findByRole('list', { name: 'Buildings' })
+
+    expect(within(details()).getByRole('link', { name: '7 active tickets in total' })).toBeInTheDocument()
+    expect(within(details()).getByText('1 building-wide ticket, not on any floor')).toBeInTheDocument()
+    // Every one of Floor 1's tickets is at a seat, so there's nothing extra to point out.
+    expect(within(details()).queryByText(/floor-wide/)).not.toBeInTheDocument()
+
+    await openFloor(user, 3)
+    expect(within(details()).getByText('2 floor-wide tickets, not at any seat')).toBeInTheDocument()
+  })
+
+  it('says nothing extra when every ticket is at a floor or seat', async () => {
+    const user = renderPage()
+    await screen.findByRole('list', { name: 'Buildings' })
+
+    // Building A's 2 active tickets are both at seat 301 on Floor 3.
+    expect(within(details()).queryByText(/building-wide/)).not.toBeInTheDocument()
+    await openFloor(user, 3)
+    expect(within(details()).queryByText(/floor-wide/)).not.toBeInTheDocument()
   })
 
   it('switches building from the list', async () => {
@@ -103,9 +145,9 @@ describe('FacilitiesPage: browsing', () => {
     await user.click(within(buildingList()).getByRole('button', { name: /^Building B/ }))
 
     expect(within(details()).getByRole('heading', { level: 2 })).toHaveTextContent('Building B')
-    // The building's chip, and Floor 2's.
+    // The building's pill, and Floor 2's.
     expect(within(details()).getAllByText('Inactive')).toHaveLength(2)
-    expect(within(details()).getByText('0 active tickets')).toBeInTheDocument()
+    expect(within(details()).getByText('No active tickets')).toBeInTheDocument()
     expect(within(details()).getByRole('button', { name: 'Reactivate Building B' })).toBeInTheDocument()
     // Its floor is active, but hidden while the building isn't.
     const seats = await openFloor(user, 1)
@@ -113,7 +155,7 @@ describe('FacilitiesPage: browsing', () => {
     expect(within(seats).getByText('No seats yet.')).toBeInTheDocument()
     // An inactive floor says so itself, rather than blaming the building.
     await user.click(within(details()).getByRole('button', { name: 'Floor 2, inactive, 0 seats, 0 active tickets' }))
-    expect(within(details()).getAllByText('Hidden while Building B is inactive.')).toHaveLength(1)
+    expect(within(details()).queryByText('Hidden while Building B is inactive.')).not.toBeInTheDocument()
     expect(within(details()).getByRole('button', { name: 'Reactivate Floor 2' })).toBeInTheDocument()
   })
 
@@ -127,6 +169,44 @@ describe('FacilitiesPage: browsing', () => {
     await user.click(screen.getByRole('option', { name: 'Building B (inactive)' }))
 
     expect(within(details()).getByRole('heading', { level: 2 })).toHaveTextContent('Building B')
+    expect(within(details()).getByText("Employees can't pick it, or any floor or seat in it, for new tickets.")).toBeInTheDocument()
+  })
+
+  it('expands floors on phones, with their seats and actions', async () => {
+    // Floor 3 also has 1 floor-wide ticket, beyond seat 301's 2.
+    const [buildingA, buildingB] = FACILITIES
+    const busyFloor3 = { ...buildingA.floors[1], active_ticket_count: 3 }
+    vi.mocked(getFacilities).mockResolvedValue([
+      { ...buildingA, active_ticket_count: 3, floors: [buildingA.floors[0], busyFloor3] },
+      buildingB,
+    ])
+    vi.mocked(updateFacility).mockResolvedValue({ ...busyFloor3, is_active: false })
+    const user = renderPage({ width: 375 })
+    await screen.findByRole('combobox', { name: 'Building' })
+
+    // Every floor starts collapsed.
+    const floor3 = within(details()).getByRole('button', { name: /^Floor 3,/ })
+    expect(floor3).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('group', { name: /^Seats on/ })).not.toBeInTheDocument()
+
+    await user.click(floor3)
+    expect(floor3).toHaveAttribute('aria-expanded', 'true')
+    const seats = screen.getByRole('group', { name: 'Seats on Floor 3' })
+    expect(within(seats).getByRole('button', { name: 'Seat 301, 2 active tickets' })).toBeInTheDocument()
+    expect(within(details()).getByRole('button', { name: 'Add a seat to Floor 3' })).toBeInTheDocument()
+    expect(within(details()).getByText('1 floor-wide ticket, not at any seat')).toBeInTheDocument()
+
+    // The floor's own actions sit behind its menu.
+    await user.click(within(details()).getByRole('button', { name: 'More actions for Floor 3' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }))
+    expect(dialog()).toHaveAccessibleName('Deactivate Floor 3?')
+    await user.click(within(dialog()).getByRole('button', { name: 'Deactivate' }))
+    expect(updateFacility).toHaveBeenCalledWith('floor', 3, { is_active: false })
+
+    // Tapping an open floor closes it.
+    await user.click(floor3)
+    expect(floor3).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('group', { name: 'Seats on Floor 3' })).not.toBeInTheDocument()
   })
 
   it('shows a placeholder while loading', () => {
@@ -233,8 +313,9 @@ describe('FacilitiesPage: adding and renaming', () => {
     const user = renderPage()
     await screen.findByRole('list', { name: 'Buildings' })
 
-    const seats = await openFloor(user, 3)
-    await user.click(within(seats).getByRole('button', { name: 'Add a seat to Floor 3' }))
+    await openFloor(user, 3)
+    // In the floor's header, beside its other actions.
+    await user.click(within(details()).getByRole('button', { name: 'Add a seat to Floor 3' }))
     await user.type(within(dialog()).getByRole('textbox', { name: 'Seat number' }), '303')
     await user.click(within(dialog()).getByRole('button', { name: 'Add seat' }))
 

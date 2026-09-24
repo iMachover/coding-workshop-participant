@@ -184,22 +184,12 @@ def test_metrics_count_each_kind_of_ticket(
         ("closed", True, True, True),
         ("closed", False, True, False),
     ]
-    ids = []
     for status, p1, assigned, escalated in rows:
         ticket_id = create_ticket(jane, **(building if p1 else {}))["ticket_id"]
         run_sql(
             "UPDATE tickets SET status = %s, assigned_to_user_id = %s, escalation_requested = %s "
             "WHERE ticket_id = %s",
             (status, engineers["sam"] if assigned else None, escalated, ticket_id),
-        )
-        ids.append(ticket_id)
-    # One close this week, one long ago: only the recent one counts.
-    for ticket_id, days_ago in ((ids[5], 0), (ids[6], 8)):
-        run_sql(
-            "INSERT INTO ticket_status_history "
-            "(ticket_id, from_status, to_status, changed_by_user_id, changed_at) "
-            "VALUES (%s, 'resolved', 'closed', %s, now() - make_interval(days => %s))",
-            (ticket_id, engineers["sam"], days_ago),
         )
 
     metrics = client.get(f"{api}/admin/metrics", headers=admin).json()
@@ -212,11 +202,11 @@ def test_metrics_count_each_kind_of_ticket(
         "resolved": 1,
         "active_p1": 3,
         "escalated": 2,
-        "closed_last_7_days": 1,
+        "closed": 2,
     }
 
 
-def test_closing_through_the_api_counts_as_a_recent_close(client, api, admin, resolved_id) -> None:
+def test_closing_through_the_api_counts_as_closed(client, api, admin, resolved_id) -> None:
     _finish(client, api, admin, resolved_id, "closed")
     metrics = client.get(f"{api}/admin/metrics", headers=admin).json()
-    assert (metrics["resolved"], metrics["closed_last_7_days"]) == (0, 1)
+    assert (metrics["resolved"], metrics["closed"]) == (0, 1)

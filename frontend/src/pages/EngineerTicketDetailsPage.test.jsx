@@ -107,7 +107,7 @@ describe('EngineerTicketDetailsPage: the ticket', () => {
     renderWithProviders(<App />, { route: '/engineer', user: SAM })
     const table = await screen.findByRole('table', { name: 'My tickets' })
 
-    await user.click(within(table).getByRole('link', { name: 'Wi-Fi keeps dropping' }))
+    await user.click(within(table).getByRole('link', { name: '#9' }))
 
     expect(await heading()).toBeInTheDocument()
     expect(getAssignedTicket).toHaveBeenCalledWith({ ticketId: '9' }, expect.anything())
@@ -120,23 +120,70 @@ describe('EngineerTicketDetailsPage: the ticket', () => {
     expect(screen.getByLabelText('Priority P3: One person')).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Jane Doe asked for an admin to review this ticket')
     expect(within(panel('Progress')).getByRole('list', { name: 'Ticket workflow' })).toBeInTheDocument()
-    expect(within(panel('Details')).getByText('My laptop loses Wi-Fi every 5-10 minutes.')).toBeInTheDocument()
-    expect(within(panel('Details')).getByText('Sam Tech')).toBeInTheDocument()
+    const details = panel('Details')
+    expect(within(details).getByText('My laptop loses Wi-Fi every 5-10 minutes.')).toBeInTheDocument()
+    expect(within(details).getByText('P3 · One person')).toBeInTheDocument()
+    expect(within(details).getByText('Yes')).toBeInTheDocument()
     const requester = panel('Requester')
-    expect(within(requester).getByRole('link', { name: 'jane@acme.inc' })).toHaveAttribute('href', 'mailto:jane@acme.inc')
+    expect(within(requester).getByText('jane@acme.inc')).toBeInTheDocument()
+    expect(within(requester).getByRole('link', { name: 'Email' })).toHaveAttribute('href', 'mailto:jane@acme.inc')
     expect(within(requester).getByRole('link', { name: '555-0100' })).toHaveAttribute('href', 'tel:5550100')
     expect(await within(panel('Status history')).findByText(/Jane Doe/)).toBeInTheDocument()
     expect(listAssignedTicketHistory).toHaveBeenCalledWith({ ticketId: '9' }, expect.anything())
   })
 
-  it('works on a phone', async () => {
-    renderPage('/engineer/tickets/9', 375)
+  it('says when the requester gave no phone number', async () => {
+    vi.mocked(getAssignedTicket).mockResolvedValue({ ...TICKET, created_by_phone: null })
+    renderPage()
     await heading()
-    expect(screen.getByRole('list', { name: 'Ticket workflow' })).toHaveStyle({ flexDirection: 'column' })
+    expect(within(panel('Requester')).getByText('No phone given')).toBeInTheDocument()
+    expect(within(panel('Requester')).getAllByRole('link')).toHaveLength(1)
+  })
+
+  it('shows a blocked ticket paused at In Progress, with the reason', async () => {
+    vi.mocked(getAssignedTicket).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
+    renderPage()
+    await heading()
+    const workflow = within(panel('Progress')).getByRole('list', { name: 'Ticket workflow' })
+    expect(workflow).toHaveTextContent('In Progress (paused while blocked)Blocked: Waiting on parts')
+  })
+
+  it('works on a phone: progress bars, tabs, and the status buttons pinned below', async () => {
+    const user = renderPage('/engineer/tickets/9', 375)
+    await heading()
+
+    expect(within(panel('Progress')).getByText('Step 2 of 4 · In Progress')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(panel('Details')).getByText('My laptop loses Wi-Fi every 5-10 minutes.')).toBeInTheDocument()
+    expect(within(panel('Requester')).getByRole('link', { name: 'Email jane@acme.inc' })).toHaveAttribute('href', 'mailto:jane@acme.inc')
+    expect(within(panel('Change status')).getByRole('button', { name: 'Mark resolved' })).toBeInTheDocument()
+
+    // On Notes, the note box takes the status buttons' place.
+    await user.click(await screen.findByRole('tab', { name: 'Notes (1)' }))
+    expect(within(panel('Notes')).getByText('Still dropping.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Add a note' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Change status' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'History' }))
+    expect(await within(panel('Status history')).findByText(/Jane Doe/)).toBeInTheDocument()
+    expect(panel('Change status')).toBeInTheDocument()
   })
 })
 
 describe('EngineerTicketDetailsPage: notes', () => {
+  it('shows the conversation oldest first, with my own notes as "You"', async () => {
+    vi.mocked(listAssignedTicketNotes).mockResolvedValue([...NOTES, SAMS_NOTE])
+    renderPage()
+    await heading()
+    const items = await within(panel('Notes')).findAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual([
+      expect.stringMatching(/^Jane Doe · .*Still dropping\.$/),
+      expect.stringMatching(/^You · .*Swapping the access point\.$/),
+    ])
+    expect(panel('Notes')).toHaveTextContent('2 · the requester sees these')
+  })
+
   it('adds a note for the requester and refreshes the ticket', async () => {
     vi.mocked(addAssignedTicketNote).mockResolvedValue(SAMS_NOTE)
     const user = renderPage()
@@ -148,13 +195,27 @@ describe('EngineerTicketDetailsPage: notes', () => {
     const box = within(notes).getByRole('textbox', { name: 'Add a note' })
     expect(box).toHaveAttribute('placeholder', "Tell the requester what you've found or what happens next.")
     await user.type(box, 'Swapping the access point.')
-    await user.click(within(notes).getByRole('button', { name: 'Add note' }))
+    await user.click(within(notes).getByRole('button', { name: 'Send' }))
 
     expect(addAssignedTicketNote).toHaveBeenCalledWith(9, 'Swapping the access point.')
     expect(await within(notes).findByText('Swapping the access point.')).toBeInTheDocument()
-    expect(within(notes).getByText('You')).toBeInTheDocument()
+    expect(within(notes).getByText(/^You · /)).toBeInTheDocument()
     expect(box).toHaveValue('')
     expect(getAssignedTicket).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends with Enter, and asks for text first', async () => {
+    vi.mocked(addAssignedTicketNote).mockResolvedValue(SAMS_NOTE)
+    const user = renderPage()
+    await heading()
+    const box = within(panel('Notes')).getByRole('textbox', { name: 'Add a note' })
+
+    await user.type(box, '   {Enter}')
+    expect(within(panel('Notes')).getByRole('alert')).toHaveTextContent('Write a note first.')
+    expect(addAssignedTicketNote).not.toHaveBeenCalled()
+
+    await user.type(box, 'On my way.{Enter}')
+    expect(addAssignedTicketNote).toHaveBeenCalledWith(9, 'On my way.')
   })
 
   it('shows why a note was refused', async () => {
@@ -163,9 +224,9 @@ describe('EngineerTicketDetailsPage: notes', () => {
     await heading()
 
     await user.type(within(panel('Notes')).getByRole('textbox', { name: 'Add a note' }), 'Done.')
-    await user.click(within(panel('Notes')).getByRole('button', { name: 'Add note' }))
+    await user.click(within(panel('Notes')).getByRole('button', { name: 'Send' }))
 
-    expect(await within(panel('Notes')).findByText("Closed tickets can't take new notes")).toBeInTheDocument()
+    expect(await within(panel('Notes')).findByRole('alert')).toHaveTextContent("Closed tickets can't take new notes")
   })
 
   it('takes no notes on a closed ticket', async () => {
@@ -187,10 +248,10 @@ describe('EngineerTicketDetailsPage: changing status', () => {
 
   it.each([
     ['open', ['Start work']],
-    ['in_progress', ['Mark resolved…', 'Mark blocked…']],
-    ['blocked', ['Unblock']],
+    ['in_progress', ['Mark blocked', 'Mark resolved']],
+    ['blocked', ['Resume work']],
     ['resolved', ['Reopen']],
-  ])('offers only the allowed moves when %s', async (status, expected) => {
+  ])('offers only the allowed moves when %s, main one last', async (status, expected) => {
     renderWith(status)
     await heading()
     expect(buttons()).toEqual(expected)
@@ -199,7 +260,7 @@ describe('EngineerTicketDetailsPage: changing status', () => {
   it('explains a resolved ticket waits for an admin', async () => {
     renderWith('resolved')
     await heading()
-    expect(controls()).toHaveTextContent('Waiting for an admin to close it. Reopen it if the problem is back.')
+    expect(controls()).toHaveTextContent('Waiting for the admin to close it')
   })
 
   it('says a closed ticket can\'t change', async () => {
@@ -209,7 +270,7 @@ describe('EngineerTicketDetailsPage: changing status', () => {
     expect(within(controls()).queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('starts work in one click and refreshes the ticket and history', async () => {
+  it('starts work in one click, refreshes the ticket and history, and says so', async () => {
     vi.mocked(changeTicketStatus).mockResolvedValue({ ...TICKET, status: 'in_progress' })
     const user = renderWith('open')
     await heading()
@@ -218,77 +279,91 @@ describe('EngineerTicketDetailsPage: changing status', () => {
     await user.click(within(controls()).getByRole('button', { name: 'Start work' }))
 
     expect(changeTicketStatus).toHaveBeenCalledWith(9, 'in_progress', undefined)
-    expect(await within(controls()).findByText('Status changed to In Progress.')).toBeInTheDocument()
-    expect(within(controls()).getByRole('button', { name: 'Mark resolved…' })).toBeInTheDocument()
+    expect(await screen.findByText('Status changed to In Progress.')).toBeInTheDocument()
+    expect(await within(controls()).findByRole('button', { name: 'Mark resolved' })).toBeInTheDocument()
     expect(getAssignedTicket).toHaveBeenCalledTimes(2)
     expect(listAssignedTicketHistory).toHaveBeenCalledTimes(2)
 
-    await user.click(within(controls()).getByRole('button', { name: 'Close' }))
-    expect(within(controls()).queryByText(/Status changed/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByText(/Status changed/)).not.toBeInTheDocument())
   })
 
-  it('asks why before blocking', async () => {
+  it('asks why inline before blocking', async () => {
     vi.mocked(changeTicketStatus).mockResolvedValue({ ...TICKET, status: 'blocked', blocked_reason: 'Waiting on parts' })
     const user = renderWith('in_progress')
     await heading()
 
-    await user.click(within(controls()).getByRole('button', { name: 'Mark blocked…' }))
-    const dialog = screen.getByRole('dialog', { name: 'Mark as blocked' })
-    expect(dialog).toHaveTextContent('The employee sees this next to "Blocked".')
+    await user.click(within(controls()).getByRole('button', { name: 'Mark blocked' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const box = within(controls()).getByRole('textbox', { name: 'Why is the work paused?' })
+    expect(box).toHaveFocus()
+    expect(box).toHaveAttribute('placeholder', 'Why is it blocked? The requester will see this.')
+    // While asking, the reason box's buttons replace the status buttons.
+    expect(buttons()).toEqual(['Mark blocked', 'Cancel'])
 
-    await user.click(within(dialog).getByRole('button', { name: 'Mark as blocked' }))
-    expect(within(dialog).getByText('Write a reason first.')).toBeInTheDocument()
+    await user.click(within(controls()).getByRole('button', { name: 'Mark blocked' }))
+    expect(within(controls()).getByRole('alert')).toHaveTextContent('Write a reason first.')
     expect(changeTicketStatus).not.toHaveBeenCalled()
 
-    await user.type(within(dialog).getByRole('textbox', { name: /Why is the work paused\?/ }), '  Waiting on parts ')
-    await user.click(within(dialog).getByRole('button', { name: 'Mark as blocked' }))
+    await user.type(box, '  Waiting on parts {Enter}')
 
     expect(changeTicketStatus).toHaveBeenCalledWith(9, 'blocked', 'Waiting on parts')
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(await within(controls()).findByText('Status changed to Blocked.')).toBeInTheDocument()
+    expect(await screen.findByText('Status changed to Blocked.')).toBeInTheDocument()
+    expect(within(controls()).queryByRole('textbox')).not.toBeInTheDocument()
   })
 
   it('asks what was done before resolving, and limits the length', async () => {
     const user = renderWith('in_progress')
     await heading()
 
-    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved…' }))
-    const dialog = screen.getByRole('dialog', { name: 'Mark as resolved' })
-    const box = within(dialog).getByRole('textbox', { name: /What did you do\?/ })
+    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved' }))
+    const box = within(controls()).getByRole('textbox', { name: 'What did you do?' })
     await user.click(box)
     await user.paste('x'.repeat(501))
-    await user.click(within(dialog).getByRole('button', { name: 'Mark as resolved' }))
+    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved' }))
 
-    expect(within(dialog).getByText('Use 500 characters or fewer.')).toBeInTheDocument()
+    expect(within(controls()).getByRole('alert')).toHaveTextContent('Use 500 characters or fewer.')
     expect(changeTicketStatus).not.toHaveBeenCalled()
   })
 
-  it('keeps the dialog open with the API\'s reason when a move is refused, and cancels cleanly', async () => {
+  it('keeps the reason box open with the API\'s reason when a move is refused, and cancels cleanly', async () => {
     vi.mocked(changeTicketStatus).mockRejectedValue(
       new ApiError('Blocked tickets can\'t be resolved. Unblock it first.', { status: 409 }),
     )
     const user = renderWith('in_progress')
     await heading()
 
-    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved…' }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByRole('textbox'), 'Fixed')
-    await user.click(within(dialog).getByRole('button', { name: 'Mark as resolved' }))
+    await user.click(within(controls()).getByRole('button', { name: 'Mark resolved' }))
+    await user.type(within(controls()).getByRole('textbox'), 'Fixed{Enter}')
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent("Blocked tickets can't be resolved. Unblock it first.")
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await within(controls()).findByRole('alert')).toHaveTextContent("Blocked tickets can't be resolved. Unblock it first.")
+    expect(within(controls()).getByRole('textbox')).toHaveValue('Fixed')
+    await user.click(within(controls()).getByRole('button', { name: 'Cancel' }))
+    expect(within(controls()).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(controls()).queryByRole('alert')).not.toBeInTheDocument()
+    expect(buttons()).toEqual(['Mark blocked', 'Mark resolved'])
   })
 
-  it('shows a refused one-click move under the buttons, never a raw error', async () => {
+  it('cancels the reason box with Escape', async () => {
+    const user = renderWith('in_progress')
+    await heading()
+
+    await user.click(within(controls()).getByRole('button', { name: 'Mark blocked' }))
+    await user.keyboard('{Escape}')
+
+    expect(within(controls()).queryByRole('textbox')).not.toBeInTheDocument()
+    expect(changeTicketStatus).not.toHaveBeenCalled()
+  })
+
+  it('shows a refused one-click move as a message, never a raw error', async () => {
     vi.mocked(changeTicketStatus).mockRejectedValue(new TypeError('boom'))
     const user = renderWith('blocked')
     await heading()
 
-    await user.click(within(controls()).getByRole('button', { name: 'Unblock' }))
+    await user.click(within(controls()).getByRole('button', { name: 'Resume work' }))
 
-    expect(await within(controls()).findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.')
+    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument()
+    expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
   })
 
   it('disables the buttons while saving', async () => {
@@ -301,6 +376,6 @@ describe('EngineerTicketDetailsPage: changing status', () => {
 
     expect(within(controls()).getByRole('button', { name: 'Reopen' })).toBeDisabled()
     finish({ ...TICKET, status: 'in_progress' })
-    expect(await within(controls()).findByText('Status changed to In Progress.')).toBeInTheDocument()
+    expect(await screen.findByText('Status changed to In Progress.')).toBeInTheDocument()
   })
 })

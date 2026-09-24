@@ -50,10 +50,8 @@ async function choose(user, label, option) {
 
 async function fillWhatsWrong(user) {
   await user.type(field('Title'), 'Printer jam')
-  await user.type(field('Short description'), 'Tray 2 is stuck')
   await choose(user, 'Category', 'Printer / Peripheral')
   await user.type(field('Full description'), 'Every job jams in tray 2.')
-  await user.click(screen.getByRole('radio', { name: /^High/ }))
 }
 
 async function chooseSeat301(user) {
@@ -87,17 +85,20 @@ describe('CreateTicketPage: layout', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Report an issue' })).toBeInTheDocument()
   })
 
-  it('shows the three sections, required fields and a way back', async () => {
+  it('shows the two sections, required fields and a way back', async () => {
     renderPage()
-    for (const name of ["What's wrong?", 'How urgent is it?', 'Where is it?']) {
+    for (const name of ["What's wrong?", 'Where is it?']) {
       expect(screen.getByRole('region', { name })).toBeInTheDocument()
     }
+    expect(screen.getByRole('heading', { level: 2, name: '2 · Where is it? *' })).toBeInTheDocument()
     expect(field('Title')).toBeRequired()
     expect(field('Full description')).toBeRequired()
-    expect(screen.getByRole('group', { name: /^Urgency/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to dashboard' })).toHaveAttribute('href', '/dashboard')
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/dashboard')
-    expect(screen.getByRole('group', { name: /^Impact: who is affected\?/ })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Who is affected?' })).toBeInTheDocument()
+    // Tickets no longer have an urgency or a short description.
+    expect(screen.queryByRole('textbox', { name: /^Short description/ })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/urgen/i)
     expect(document.body).not.toHaveTextContent(/priority|\bP[123]\b/i)
     await waitFor(() => expect(combo('Building')).not.toHaveAttribute('aria-disabled'))
   })
@@ -193,10 +194,8 @@ describe('CreateTicketPage: submitting', () => {
     expect(createTicket).not.toHaveBeenCalled()
     for (const message of [
       'Give the issue a short title.',
-      'Sum up the issue in a sentence.',
       'Choose a category.',
       "Describe what's happening.",
-      'Choose how urgent this is.',
       "Choose who's affected.",
       'Choose a building.',
     ]) {
@@ -208,13 +207,12 @@ describe('CreateTicketPage: submitting', () => {
   it('focuses the first missing choice when the text is filled in', async () => {
     const user = renderPage()
     await user.type(field('Title'), 'Printer jam')
-    await user.type(field('Short description'), 'Tray 2 is stuck')
     await choose(user, 'Category', 'Printer / Peripheral')
     await user.type(field('Full description'), 'Every job jams.')
 
     await user.click(screen.getByRole('button', { name: 'Create ticket' }))
 
-    expect(screen.getByRole('radio', { name: /^Low/ })).toHaveFocus()
+    expect(screen.getByRole('radio', { name: /^Just me/ })).toHaveFocus()
   })
 
   it('checks a text field when the user leaves it, but not one they only tabbed through', async () => {
@@ -257,10 +255,8 @@ describe('CreateTicketPage: submitting', () => {
 
     expect(createTicket).toHaveBeenCalledWith({
       title: 'Printer jam',
-      short_description: 'Tray 2 is stuck',
       description: 'Every job jams in tray 2.',
       category: 'printer',
-      urgency: 'high',
       affected_scope: 'me',
       building_id: '1',
       floor_id: '3',
@@ -281,7 +277,7 @@ describe('CreateTicketPage: submitting', () => {
 
     expect(screen.getByRole('button', { name: 'Creating ticket…' })).toBeDisabled()
     expect(field('Title')).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /^High/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /^Just me/ })).toBeDisabled()
   })
 
   it('shows an API location mismatch at the top of the form', async () => {

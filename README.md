@@ -65,7 +65,7 @@ Frontend code lives in `frontend/src/`:
 | Folder / file | Holds |
 |---|---|
 | `pages/` | One component per route |
-| `components/` | Shared UI: app header (with each role's page links, from `NAV_LINKS` in `utils/roles.js`) and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `Panel`, `BackLink`, `FilterSelect`; `dashboard/`, `tickets/`, `admin/` and `engineer/` hold feature pieces. Staff pages share `tickets/StaffTicketList`, `StaffTicketSummary` and `PriorityChip`, which show priority, so they're for staff screens only: employee pages never show priority. |
+| `components/` | Shared UI: app header (with each role's page links, from `NAV_LINKS` in `utils/roles.js`) and layout, route guards (`ProtectedRoute roles={[...]}` shows a "You don't have access to this" page to other roles), `ErrorState`, `Panel`, `BackLink`; `tickets/`, `admin/` and `engineer/` hold feature pieces. Staff pages share `StaffTicketSummary` and `PriorityChip`, which show priority, so they're for staff screens only: employee pages never show priority. |
 | `services/` | All API calls. `apiClient.js` is the only place that uses `fetch`. |
 | `auth/` | `AuthProvider` + `useAuth()`: the signed-in user, sign in/out, and sign-out when the API rejects the token (expired, forged, or the role changed). The access token lives in `services/session.js` (localStorage) and `apiClient.js` sends it as `Authorization: Bearer <token>`. |
 | `hooks/` | `useApiData` (loads data, cancels outdated requests, retry), `useMyTickets`, `useAllTickets` (admin), `useDebouncedValue` (search waits 300 ms after typing), `useIsMobile` (react-responsive) |
@@ -152,7 +152,7 @@ It needs Google Chrome installed. To use Playwright's own Chromium instead, run 
 | `engineer-journey.spec.js` | An engineer signs in to My queue → "Up next" and the counts → their tickets only, in triage order, with filters → Start work from the card, which makes it the Current ticket → its details (priority, requester) → add a note → block it with a reason, unblock, resolve it with a summary → the employee sees it resolved, with the summary, on their own page → someone else's ticket looks missing. Also fits a phone. |
 | `employee-journey.spec.js` | The critical path: register → sign in → create a ticket (Building → Floor → Seat) → add a note → escalate → dashboard and search → sign out. Also checks that no tickets API response carries `priority`. |
 | `access-and-edge-cases.spec.js` | Another employee's ticket shows "Ticket not found", a blocked ticket shows the engineer's reason, form errors from the client and the API, a stale session, an engineer landing on their own workspace (and never calling the tickets API), and the phone layout |
-| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Closing: the "Ready to close" card lists resolved tickets, one is closed with a note (the employee sees it) and another is sent back to its engineer, and "Closed (7 days)" counts it. Facilities: add a building, floor and seat (the same seat in another case is refused in the dialog), the employee can pick the new building, a ticket there makes delete refuse with "Deactivate instead", then the employee can't pick it but their ticket keeps it, and its ticket count opens the dashboard filtered to it. Also: employees can't open any admin page, and the admin pages (Facilities too) fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
+| `admin-journey.spec.js` | A Facility Admin signs in to `/admin` → the unassigned queue (priority, escalated) → search and filter all tickets in triage order → an escalated ticket's details (requester, reason, read-only notes) → back. Assigning: quick-assign from a queue card, the engineer's workload and filtering by them, then assign and reassign from a ticket's details (the employee sees the engineer, never the priority). People: open it from the header, promote an employee after confirming (they're signed out elsewhere and come back as an engineer), and an engineer with an active ticket can't be moved back, with a link to their tickets. Closing: the "Ready to close" card lists resolved tickets, one is closed with a note (the employee sees it) and another is sent back to its engineer, and the Closed card counts it. Facilities: add a building, floor and seat (the same seat in another case is refused in the dialog), the employee can pick the new building, a ticket there makes delete refuse with "Deactivate instead", then the employee can't pick it but their ticket keeps it, and its ticket count opens the dashboard filtered to it. Also: employees can't open any admin page, and the admin pages (Facilities too) fit a phone. Roles are set with SQL (`setRole` in `e2e/helpers.js`) for test setup. |
 
 ### Manual checks with curl
 
@@ -229,17 +229,17 @@ Create a ticket (employees only). The server sets `status` to `open` and the cre
 
 ```sh
 curl -X POST http://localhost:8000/api/core/tickets -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"title":"Wi-Fi keeps dropping","short_description":"Disconnects every few minutes",
+  -d '{"title":"Wi-Fi keeps dropping",
        "description":"Since this morning my laptop loses Wi-Fi every 5-10 minutes.",
-       "category":"network","urgency":"medium","affected_scope":"me",
+       "category":"network","affected_scope":"me",
        "building_id":1,"floor_id":3,"seat_id":3}'
-# 201 {"ticket_id":1,...,"urgency":"medium","affected_scope":"me","status":"open",...}
+# 201 {"ticket_id":1,...,"affected_scope":"me","status":"open",...}
 ```
 
 | Problem | Status |
 |---|---|
 | `affected_scope` is `floor` without `floor_id`, or `me` without `seat_id`, or `seat_id` without `floor_id` | 422 |
-| Unknown category/urgency/scope, blank title | 422 |
+| Unknown category/scope, blank title | 422 |
 | Floor not in the building, seat not on the floor, unknown building/floor/seat | 400 |
 | A building, floor or seat an admin has deactivated | 400 `Building A is no longer available` (or `Floor 3 …`, `Seat 301 …`) |
 
@@ -247,7 +247,7 @@ List my tickets, most recently updated first. Only the caller's own tickets are 
 
 ```sh
 curl 'http://localhost:8000/api/core/tickets' -H "Authorization: Bearer $TOKEN"
-curl 'http://localhost:8000/api/core/tickets?view=active&urgency=high' -H "Authorization: Bearer $TOKEN"
+curl 'http://localhost:8000/api/core/tickets?view=active&status=open' -H "Authorization: Bearer $TOKEN"
 curl 'http://localhost:8000/api/core/tickets?q=printer' -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -255,8 +255,7 @@ curl 'http://localhost:8000/api/core/tickets?q=printer' -H "Authorization: Beare
 |---|---|
 | `view` | `active` (everything not closed) or `closed` |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
-| `urgency` | `low`, `medium`, `high` |
-| `q` | Case-insensitive text in title or short description, or an exact ticket id |
+| `q` | Case-insensitive text in title or full description, or an exact ticket id |
 
 Filters combine with AND. An unknown value, or an unknown parameter such as `priority`, returns 422.
 
@@ -315,13 +314,12 @@ curl 'http://localhost:8000/api/core/admin/tickets?q=eve%20other' -H "Authorizat
 | `view` | `active` (everything not closed) or `closed` |
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
 | `priority` | `P1`, `P2`, `P3` |
-| `urgency` | `low`, `medium`, `high` |
 | `category` | `network`, `hardware`, `printer`, `hvac`, `electrical`, `furniture`, `building_facilities`, `other` |
 | `building_id` | A building id |
 | `assignment` | `unassigned` (the triage queue) or `assigned` |
 | `assigned_to` | An engineer's user id |
 | `escalated` | `true` or `false` |
-| `q` | Case-insensitive text in title, short description, requester name or requester email, or an exact ticket id |
+| `q` | Case-insensitive text in title, full description, requester name or requester email, or an exact ticket id |
 
 Filters combine with AND, so `assignment=unassigned&assigned_to=4` is always empty. An unknown value or parameter returns 422.
 
@@ -393,11 +391,11 @@ curl -X POST http://localhost:8000/api/core/admin/tickets/1/status -H "Authoriza
 | `status` other than `closed` or `in_progress`, or a reason over 500 characters | 422 |
 | Ticket doesn't exist | 404 `Ticket not found` |
 
-Headline counts for the dashboard. "Active" means not closed, the same as the ticket list's `view=active`, so each count matches its filter. `closed_last_7_days` comes from the status history.
+Headline counts for the dashboard. "Active" means not closed, the same as the ticket list's `view=active`, so each count matches its filter. `closed` counts every closed ticket, as `view=closed` lists.
 
 ```sh
 curl http://localhost:8000/api/core/admin/metrics -H "Authorization: Bearer $ADMIN_TOKEN"
-# 200 {"unassigned":0,"open":0,"in_progress":0,"blocked":0,"resolved":1,"active_p1":1,"escalated":0,"closed_last_7_days":0}
+# 200 {"unassigned":0,"open":0,"in_progress":0,"blocked":0,"resolved":1,"active_p1":1,"escalated":0,"closed":0}
 ```
 
 #### Facility Admin: people and roles
@@ -488,7 +486,7 @@ curl 'http://localhost:8000/api/core/engineer/tickets?q=elevator' -H "Authorizat
 | `status` | `open`, `in_progress`, `blocked`, `resolved`, `closed` |
 | `priority` | `P1`, `P2`, `P3` |
 | `building_id` | A building id |
-| `q` | Case-insensitive text in title, short description, requester name or email, or an exact ticket id |
+| `q` | Case-insensitive text in title, full description, requester name or email, or an exact ticket id |
 
 Filters combine with AND. There's no assignee filter, because the queue is always yours: an unknown parameter such as `assigned_to` is a 422.
 
@@ -625,5 +623,5 @@ Bad input returns `{"ok": false, "error": "..."}` without changing anything, and
 - List endpoints return every matching record, with no pagination yet.
 - Employees, engineers and Facility Admins each have their pages. Facility admins have a dashboard (`/admin`: count cards that filter the list, the unassigned queue with quick assign, each engineer's workload, then all tickets with search and filters) a details page (`/admin/tickets/:id`) where they can assign or reassign the ticket, and close a resolved ticket or send it back (notes are read-only for them), a People page (`/admin/people`) to move people between employee and engineer, and a Facilities page (`/admin/facilities`: buildings beside the chosen one's floor accordions and seat chips, a building dropdown on phones) to add, rename, deactivate or reactivate, and delete buildings, floors and seats. The dashboard's Building filter lists inactive buildings too (marked), and `?building=<id>` opens it filtered to one. Engineers' Building filter still uses the employee list (`GET /buildings`), so it leaves out inactive buildings even when an engineer has tickets there. With many unassigned tickets the queue section gets long; it isn't paged or capped. Engineers have My queue (`/engineer`: the current or next ticket, counts, and their tickets with search and filters) and a details page (`/engineer/tickets/:id`) where they can add notes and move the ticket along: start, block (with a reason), unblock, resolve (with a summary) and reopen. Only the moves the workflow allows are offered, and "Up next" can be started from the dashboard. Admins can move people between employee and engineer (`PUT /admin/users/{id}/role`), but admin accounts can't be created through the API: use the setup task's `admin_email` (see Deployment), or in SQL set their `role_id` in the `users` table to the `admin` row in `roles`.
 - Status history is written when a ticket is created and on every status change (engineers moving it along, admins closing it or sending it back). Any new endpoint that changes status must call `ticket_repository.set_status` and `insert_status_change` in the same transaction, or the history will miss that step. Tickets have no `closed_at` column: the close time is the history row's `changed_at`.
-- Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the urgency and impact they chose, and the status. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
+- Ticket **priority** (P1/P2/P3) is stored for engineer and admin triage but is not part of the employee API: no employee response includes it and employees can't filter by it. Employees see the impact they chose (who is affected) and the status. Tickets have no urgency or short description: priority comes from the affected scope alone. The admin ticket routes return priority, filter by it and sort by it. Admins can't change it yet.
 - Deploy packaging: Terraform builds the Lambda zip with pip on the machine running it (`build_in_docker = false`), so compiled packages (psycopg-binary, pydantic-core) need Linux x86_64 wheels before deploying from a Mac. The zip also includes `backend/core/tests/`, which is harmless.
