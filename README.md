@@ -2,6 +2,10 @@
 
 Ticketing app for reporting and resolving facility issues. Frontend: React + Vite. Backend: FastAPI on AWS Lambda. Database: PostgreSQL.
 
+## Data model
+
+See the [ERD diagram](https://claude.ai/artifact/WrZzP8zbaE1ZHMZxjkdrcq). The database has 8 PostgreSQL tables in three groups: people (`roles`, `users`), tickets (`tickets`, `ticket_notes`, `ticket_status_history`) and places (`buildings`, `floors`, `seats`). They're defined in [backend/core/sql/schema.sql](backend/core/sql/schema.sql).
+
 ## Local development
 
 Run all commands from the repo root.
