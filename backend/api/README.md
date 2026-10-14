@@ -87,8 +87,15 @@ Seeded development accounts (change before any shared deployment):
 | Username | Password | Role |
 |----------|----------|------|
 | `adm001` | `Admin123!` | admin |
-| `mgr001` | `Manager123!` | manager |
-| `emp001`, `emp002`, `emp003` | `Employee123!` | employee |
+| `mgr001`, `mgr002` | `Manager123!` | manager |
+| `emp001`, `emp002`, `emp003`, `emp004` | `Employee123!` | employee |
+
+`mgr001` manages `emp001`–`emp003` (Infrastructure); `mgr002` manages `emp004`
+(Operations). The seed also creates sample data so every page has something to
+show: 2 departments, 2 projects (INF-024 under `mgr001` with 3 milestones,
+OPS-018 under `mgr002` with 2), a team per manager attached to its project,
+tasks with resources, a week of logged hours, and a milestone note thread.
+Sample dates are relative to the day the seed first runs.
 
 ## Run locally without LocalStack
 
