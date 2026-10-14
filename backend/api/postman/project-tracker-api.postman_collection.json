@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "Project Tracker API",
+    "description": "Authentication slice. Run 'Login' first; it stores the token in the collection variable used by the other requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001/api/api", "description": "Local proxy. Cloud: https://<cloudfront-domain>/api/api. Direct uvicorn: http://localhost:8000" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 ok', () => pm.response.to.have.status(200));",
+        "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+      ] } }]
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"emp001\",\n  \"password\": \"Employee123!\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 ok', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.test('has token and user', () => { pm.expect(body.token).to.be.a('string'); pm.expect(body.user.username).to.eql('emp001'); });",
+        "pm.test('never exposes password hash', () => pm.expect(body.user).to.not.have.property('password_hash'));",
+        "pm.collectionVariables.set('token', body.token);"
+      ] } }]
+    },
+    {
+      "name": "Login - wrong password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"emp001\",\n  \"password\": \"wrong\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('401', () => pm.response.to.have.status(401));",
+        "pm.test('error envelope', () => { const b = pm.response.json(); pm.expect(b.success).to.eql(false); pm.expect(b.error.code).to.eql('INVALID_CREDENTIALS'); });"
+      ] } }]
+    },
+    {
+      "name": "Login - missing password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"emp001\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400', () => pm.response.to.have.status(400));",
+        "pm.test('field error', () => pm.expect(pm.response.json().error.fields).to.have.property('password'));"
+      ] } }]
+    },
+    {
+      "name": "Me",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/me"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 ok', () => pm.response.to.have.status(200));",
+        "pm.test('is emp001', () => pm.expect(pm.response.json().username).to.eql('emp001'));"
+      ] } }]
+    },
+    {
+      "name": "Me - no token",
+      "request": { "method": "GET", "url": "{{baseUrl}}/me" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('401', () => pm.response.to.have.status(401));",
+        "pm.test('UNAUTHORIZED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+      ] } }]
+    }
+  ]
+}

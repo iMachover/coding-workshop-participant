@@ -1,0 +1,4 @@
+[bandit]
+# CI runs `bandit -r ./backend`. Tests rely on `assert` (B101) by design and the
+# virtualenv is third-party code, so both are excluded from the scan.
+exclude = */tests/*,*/.venv/*

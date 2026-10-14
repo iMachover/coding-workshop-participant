@@ -6,6 +6,7 @@ same container (same strategy as backend/_examples/python-service). The first
 request in a container also applies pending migrations and the seed.
 """
 
+import contextlib
 import logging
 from collections.abc import Iterator
 
@@ -33,10 +34,8 @@ def reset_connection() -> None:
     """Drop the shared connection so the next call reconnects."""
     global _conn
     if _conn is not None:
-        try:
+        with contextlib.suppress(Exception):  # best effort; the connection is discarded anyway
             _conn.close()
-        except Exception:  # pragma: no cover - best effort
-            pass
     _conn = None
 
 
