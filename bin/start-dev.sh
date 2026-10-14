@@ -329,6 +329,13 @@ fi
 
 # Install pip requirements into each Python service directory for hot-reload
 # Skip if requirements.txt hasn't changed since last install (avoids slow PyPI lookups)
+# The packages must be built for the Lambda runtime (python3.13 in infra/locals.tf),
+# so use that interpreter's pip rather than whichever `pip` is first on PATH.
+LAMBDA_PYTHON="${LAMBDA_PYTHON:-python3.13}"
+if ! command -v "$LAMBDA_PYTHON" &> /dev/null || ! "$LAMBDA_PYTHON" -m pip --version &> /dev/null; then
+    echo -e "  ✗ $LAMBDA_PYTHON with pip is required to vendor Lambda dependencies (set LAMBDA_PYTHON to override)"
+    exit 1
+fi
 shopt -s nullglob
 for req in "$PROJECT_ROOT"/backend/*/requirements.txt; do
     svc_dir="$(dirname "$req")"
@@ -338,9 +345,14 @@ for req in "$PROJECT_ROOT"/backend/*/requirements.txt; do
         echo -e "  pip requirements for $(basename "$svc_dir") already up to date, skipping..."
         continue
     fi
-    echo -e "  Installing pip requirements for $(basename "$svc_dir")..."
-    pip install --quiet --target="$svc_dir" -r "$req" 2>/dev/null || true
-    echo "$REQS_HASH" > "$HASH_FILE"
+    echo -e "  Installing pip requirements for $(basename "$svc_dir") with $LAMBDA_PYTHON..."
+    if "$LAMBDA_PYTHON" -m pip install --quiet --target="$svc_dir" -r "$req" > /tmp/pip-install.log 2>&1; then
+        echo "$REQS_HASH" > "$HASH_FILE"
+    else
+        echo -e "  ✗ pip install failed for $(basename "$svc_dir"); the Lambda would fail to import its dependencies"
+        tail -n 20 /tmp/pip-install.log | sed 's/^/    /'
+        exit 1
+    fi
 done
 
 # Install npm dependencies into each Node.js service directory for hot-reload

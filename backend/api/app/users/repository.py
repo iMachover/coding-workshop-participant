@@ -18,6 +18,13 @@ def find_by_username(conn: psycopg.Connection, username: str) -> dict[str, Any] 
         return cur.fetchone()
 
 
+def list_all(conn: psycopg.Connection) -> list[dict[str, Any]]:
+    """Return every user row, including archived ones, ordered by username."""
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT {_COLUMNS} FROM users ORDER BY username")  # nosec B608
+        return cur.fetchall()
+
+
 def find_by_id(conn: psycopg.Connection, user_id: int) -> dict[str, Any] | None:
     """Return the user row for an id, or None."""
     with conn.cursor() as cur:

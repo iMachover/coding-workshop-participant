@@ -2,8 +2,10 @@
 Shared pytest fixtures.
 
 Tests run against a real PostgreSQL database (default: project_tracker_test on
-localhost). The schema is dropped and rebuilt from the migrations once per
-session, then the seed is applied, so tests exercise the real migration path.
+localhost, as postgres/postgres123 like bin/setup-environment.sh; create it once
+with `createdb`, see README). The schema is dropped and rebuilt from the
+migrations once per session, then the seed is applied, so tests exercise the
+real migration path.
 """
 
 import os
@@ -18,7 +20,8 @@ os.environ.setdefault("JWT_EXPIRES_MINUTES", "60")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("POSTGRES_NAME", "project_tracker_test")
-os.environ.setdefault("POSTGRES_USER", os.getenv("USER", "postgres"))
+os.environ.setdefault("POSTGRES_USER", "postgres")
+os.environ.setdefault("POSTGRES_PASS", "postgres123")  # nosec B105 - local dev default
 
 from fastapi.testclient import TestClient  # noqa: E402
 

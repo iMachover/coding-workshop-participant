@@ -42,7 +42,8 @@ backend/api/
 - `get_current_user` re-reads the user on every request, so archiving a user
   revokes access immediately even if their token is still valid.
 - `require_roles("admin", "manager")` is the dependency for role-restricted
-  routes (returns `403 FORBIDDEN`).
+  routes (returns `403 FORBIDDEN`). `GET /users` (admin only, lists every
+  user) is the first route that uses it.
 
 ### Error format
 
@@ -111,9 +112,18 @@ With LocalStack use `./bin/start-dev.sh` as usual; the API is then at
 
 ```sh
 cd backend/api
-createdb project_tracker_test       # once
+python3.13 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+PGPASSWORD=postgres123 createdb -h localhost -U postgres project_tracker_test   # once
 .venv/bin/python -m pytest
 ```
+
+The tests connect to `localhost:5432` as `postgres` / `postgres123`, the
+credentials `bin/setup-environment.sh` configures (defaults in
+`tests/conftest.py`). If your local PostgreSQL uses different credentials, pass
+them in, e.g. `POSTGRES_USER=me POSTGRES_PASS=secret .venv/bin/python -m pytest`.
+Every test erroring with `psycopg.OperationalError` (`no password supplied`,
+`password authentication failed` or `database "project_tracker_test" does not
+exist`) means one of these two steps is missing.
 
 The suite drops and recreates the `project_tracker_test` schema, applies the
 migrations and seed, then covers: hashing, token creation/expiry/tampering,
