@@ -34,6 +34,13 @@ export const MILESTONE_STATUS = {
   locked: { label: 'Locked', tone: 'muted' },
 };
 
+export const ROLE = {
+  admin: { label: 'Admin', tone: 'info' },
+  manager: { label: 'Manager', tone: 'info' },
+  employee: { label: 'Employee', tone: 'neutral' },
+  archived: { label: 'Archived', tone: 'muted' },
+};
+
 /** Shown on a project until its manager links a team to it (My team page). */
 export const NO_TEAM = { none: { label: 'No team assigned', tone: 'warning' } };
 

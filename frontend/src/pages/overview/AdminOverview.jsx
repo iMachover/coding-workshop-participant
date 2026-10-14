@@ -11,6 +11,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import AccessTimeOutlined from '@mui/icons-material/AccessTimeOutlined';
+import AddOutlined from '@mui/icons-material/AddOutlined';
+import PersonAddOutlined from '@mui/icons-material/PersonAddOutlined';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
 import FolderOutlined from '@mui/icons-material/FolderOutlined';
 import GroupOutlined from '@mui/icons-material/GroupOutlined';
@@ -24,7 +26,7 @@ import { PersonCell } from '../../components/PersonCell';
 import { SectionCard } from '../../components/SectionCard';
 import { StatCards } from '../../components/StatCards';
 import { StatusChip } from '../../components/StatusChip';
-import { TableToolbar } from '../../components/TableToolbar';
+import { SearchBar } from '../../components/SearchBar';
 import { PageHeader } from '../../layout/PageHeader';
 import { monoFont } from '../../theme';
 import { formatCount, formatDate, formatHours, formatMoney, formatWhen } from '../../utils/format';
@@ -32,8 +34,8 @@ import { formatCount, formatDate, formatHours, formatMoney, formatWhen } from '.
 /**
  * Admin Overview (ADMIN.md §6.1): portfolio totals, every active project, manager
  * coverage and the latest audit entries. Data: GET /admin/overview.
- * Create user and Create project arrive with the People and Projects slices; the archived
- * filter arrives with the Archives slice.
+ * Create user and Create project open the People and Projects pages with their create panel;
+ * the archived filter arrives with the Archives slice.
  */
 
 const PORTFOLIO_FILTERS = [
@@ -49,6 +51,16 @@ export function AdminOverview() {
         eyebrow="Organization overview"
         title="Overview"
         subtitle="Project health, the manager of each project, and recent changes."
+        actions={
+          <>
+            <Button component={RouterLink} to="/people?create=1" startIcon={<PersonAddOutlined />}>
+              Create user
+            </Button>
+            <Button variant="contained" component={RouterLink} to="/projects?create=1" startIcon={<AddOutlined />}>
+              Create project
+            </Button>
+          </>
+        }
       />
       {data ? <Content data={data} /> : <LoadState error={error} onRetry={retry} />}
     </>
@@ -103,7 +115,7 @@ function Content({ data }) {
           count={visible.length}
           subtitle="Every active project and the manager accountable for it. Select a row to open it."
           action={
-            <TableToolbar
+            <SearchBar
               search={search}
               onSearch={setSearch}
               placeholder="Search projects…"

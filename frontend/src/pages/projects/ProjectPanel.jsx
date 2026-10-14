@@ -1,7 +1,9 @@
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AddOutlined from '@mui/icons-material/AddOutlined';
@@ -140,7 +142,14 @@ export function ProjectPanel({ projectId, onClose, onOpenMilestone }) {
           {project.team_names.length === 0 && !project.is_archived && (
             <Box sx={{ mb: 2.5, p: 1.75, bgcolor: '#faf0d9', color: '#88601c', borderRadius: '5px', fontSize: 12 }}>
               {user.role === 'manager'
-                ? 'No team is working on this project yet. Assign one of your teams from My team so tasks can be planned.'
+                ? (
+                  <>
+                    No team is working on this project yet. Attach one of your teams so tasks can be planned.{' '}
+                    <Link component={RouterLink} to="/team" sx={{ color: 'inherit', fontWeight: 600 }}>
+                      Open My team
+                    </Link>
+                  </>
+                )
                 : user.role === 'admin'
                   ? `No team is assigned yet. ${project.manager_name} assigns teams from the My team page.`
                   : 'No team has been assigned to this project yet.'}

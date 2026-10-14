@@ -18,6 +18,7 @@ VM, LocalStack, AWS) has the same accounts.
 | `emp002` | `Employee123!` | employee | Priya Natarajan | Network Engineer | Infrastructure (INF) | `mgr001` |
 | `emp003` | `Employee123!` | employee | Jordan Okafor | Datacenter Technician | Infrastructure (INF) | `mgr001` |
 | `emp004` | `Employee123!` | employee | Casey Nguyen | Inventory Analyst | Operations (OPS) | `mgr002` |
+| `emp005` | `Employee123!` | employee | Alex Kim | Storage Engineer | Infrastructure (INF) | nobody yet |
 
 ## Which account to use
 
@@ -30,17 +31,20 @@ VM, LocalStack, AWS) has the same accounts.
 | An employee with work waiting for review | `emp002` | A submitted task on INF-024 |
 | An employee with nothing started yet | `emp003` | Only assigned tasks: one in the current milestone, one Blocked in the next |
 | An employee on the other manager's project | `emp004` | A task in progress on OPS-018 |
+| An employee no manager has taken on yet (pick them from My team → Assign employee) | `emp005` | No teams, projects or tasks |
 
 ## How login works
 
 - Sign in at the app's `/login` page with a username and password. There is no self-registration;
-  admins create accounts.
+  admins create accounts on the People & access page. The username is generated there (6 letters
+  or digits) and shown once, together with the temporary password the admin typed.
 - Usernames are exactly 6 characters. A wrong username, a wrong password and an archived account all
   get the same "invalid username or password" message.
 - A successful login returns a JWT that lasts 8 hours. The browser keeps it in `localStorage` and
   sends it with every API request. When it expires, the next request returns 401 and the app goes
   back to the login page.
 - Log out with the button next to your name at the bottom of the sidebar.
+- An archived account cannot sign in. Admins archive and restore accounts from a person's profile.
 - What you see depends on your role: the sidebar lists only your role's pages, and opening another
   role's page by URL shows a "no access" page. The API checks the role again on every request.
 

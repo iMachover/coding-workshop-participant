@@ -30,9 +30,11 @@ def test_list_users_allows_admin(client):
     token = login(client, **SEED_ADMIN)
     response = client.get("/users", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200, response.text
-    usernames = [u["username"] for u in response.json()]
+    page = response.json()
+    usernames = [u["username"] for u in page["items"]]
     assert {"adm001", "mgr001", "emp001"} <= set(usernames)
-    assert all("password_hash" not in u for u in response.json())
+    assert all("password_hash" not in u for u in page["items"])
+    assert page["total"] == len(page["items"])
 
 
 def test_list_users_forbids_employee(client):

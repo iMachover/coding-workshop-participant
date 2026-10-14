@@ -42,7 +42,7 @@ POSTGRES_USER=$USER POSTGRES_PASS= .venv/bin/python -m pytest
 **Expected result**
 
 ```text
-125 passed
+153 passed
 ```
 
 If any test fails, the output shows which one and why.
@@ -60,6 +60,8 @@ Most tests run against the real test database.
 | `tests/test_seed.py` | 8 | The sample data is consistent. Seeding again adds nothing, and audit entries point at records that exist. |
 | `tests/test_overview.py` | 28 | The three Overview pages: project health rules, cost = hours × rate, people over 40 hours flagged, and what each role can see. |
 | `tests/test_projects.py` | 23 | The Projects API: what each role can see, admin-only create, archive and restore, manager edit limits, validation, and audit entries. |
+| `tests/test_work.py` | 16 | Tasks and milestones: forward-only status, one active milestone, review, approval, notes, close project. |
+| `tests/test_people.py` | 28 | People and teams: paginated people list, create with generated username (employees start unassigned), validation, role-change and archive blockers, last-admin rule, manager's direct reports, taking an unassigned employee on and releasing them (directly or through a team), teams (create, rename, members, attach and detach), employee My teams. Cleans up what it creates. |
 | `tests/test_lambda_handler.py` | 5 | The Lambda entry point strips the CloudFront path prefix. |
 
 **Common errors**
@@ -103,9 +105,10 @@ Run the `export` line and both commands in the same terminal window. The API wil
 
 **Expected result**
 
-41 requests. Every test passes.
+108 requests. Every test passes.
 
-The collection creates and archives a project. If a second run gives different results, reset the local database and run again.
+The collection creates and archives a project, creates a person (archived and restored) and a
+team. If a second run gives different results, reset the local database and run again.
 
 **Test logins**
 

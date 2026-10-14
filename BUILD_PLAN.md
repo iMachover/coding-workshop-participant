@@ -33,7 +33,7 @@ Add anything that blocks progress, or any decision made along the way, to
 | `money()` | `utils/format.js` |
 | `Drawer` | `components/SidePanel.jsx` (new; MUI `Drawer` on the right) |
 | `Toast` | `context/ToastProvider.jsx` + `useToast` (new; MUI `Snackbar`) |
-| `SearchBox` + filter select | `components/TableToolbar.jsx` (new) |
+| `SearchBox` + filter select | `components/SearchBar.jsx` (new) |
 | `Person` | `components/PersonCell.jsx` (new) |
 | `Empty` | `components/EmptyState.jsx` (new) |
 
@@ -65,7 +65,7 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 ### Slice 1: shell and theme to match the prototype
 - [x] `theme.js` uses the prototype's colours and fonts (DM Sans and Manrope, loaded in `index.html`)
 - [x] Sidebar, top bar and new footer restyled to match `Shell`
-- [x] New SidePanel, ToastProvider/useToast, TableToolbar, PersonCell and EmptyState
+- [x] New SidePanel, ToastProvider/useToast, SearchBar, PersonCell and EmptyState
 - [x] The three Overview pages restyled to match the prototype dashboards (Admin portfolio gained
       the prototype's search and health filter, client-side)
 - [x] Protected routes re-checked in a browser (Playwright, 2026-10-13): signed-out users go to
@@ -101,7 +101,7 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
       manager field; employee read-only panel with own cost; phone width; no console errors
 - [x] Docs: README status, endpoints and layout; backend README "Project endpoints"
 - [ ] Deferred to slice 3: milestone notes and task approval inside the panel; `POST /projects/{id}/close`
-- [ ] Deferred: Employee Overview "project memberships" / "what comes next" blocks (need `GET /me/teams`)
+- [x] Deferred: Employee Overview "project memberships" / "what comes next" blocks → the My teams page (slice 4)
 - [x] Owner reviewed and committed 2026-10-14 (bf4af04)
 
 ### Slice 3: tasks and milestones
@@ -124,15 +124,40 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 - [x] Playwright e2e suite in `frontend/e2e/` (`npm run test:e2e`): sign-in and forbidden route,
       employee submits a task, manager approves and reopens it, admin creates and archives a project
 - [x] Docs: READMEs, TESTING.md, this file
-- [ ] Deferred to slice 4: attach teams so new projects can get tasks; "Log hours" button (slice 5)
-- [x] Owner reviewed and committed 2026-10-14
+- [x] Attach teams so new projects can get tasks: done in slice 4
+- [ ] Deferred to slice 5: "Log hours" button
+- [x] Owner reviewed and committed 2026-10-14 (1976269)
 
 ### Slice 4: People, My team, My teams
-- [ ] Admin: `GET/POST/PATCH /users`, archive a user
-- [ ] Manager: team list with 40-hour capacity, create teams, membership and hours, edit a
-      report's name and email
-- [ ] Employee: `GET /me/teams`
-- [ ] pytest, Postman, pages, Playwright, docs
+- [x] Admin API: `GET /users` (paginated, search, role / department / archived filters, role counts),
+      `POST /users` (generated 6-character username, temporary password), `GET /users/{id}` (profile with
+      projects, teams, milestone progress, recent hours, blockers), `PATCH /users/{id}` (role change 409
+      while a manager has active projects or reports, or an employee has open tasks), archive / restore
+      (409 for own account or the last admin; login revoked at once), `GET /users/options`
+- [x] Manager API: `GET /employees`, `GET/PATCH /employees/{id}` (name and email only), `GET/POST /teams`,
+      `PATCH /teams/{id}`, `POST/DELETE /teams/{id}/members/{user_id}` (direct reports; an unassigned
+      employee becomes one), `POST /employees/{id}/assign` and `/release` (owner decision 2026-10-14:
+      managers pick from the full employee list, one manager per employee, another manager's people
+      are blocked until an admin moves them, and managers release their own),
+      `POST/DELETE /projects/{id}/teams/{team_id}` (own project and own team), `GET /teams/options`
+- [x] Employee API: `GET /me/teams` (manager card, each project's current milestone, own progress,
+      teammates' progress and never their cost)
+- [x] Every write records an audit row (`user`, `team`, `project` entities)
+- [x] pytest: 28 tests → 153 total; Postman "People and teams" folder (46 requests, 108 total)
+- [x] Pages: People & access (admin) with pagination, filters, create-user panel and one-time credentials
+      dialog; My team (manager) with direct reports table, hours per team, Teams card, create / assign /
+      manage panels (PeoplePicker: job title filter, name search, first 25 from `GET /employees/search`,
+      own and unassigned employees only, team members hidden; the profile panel releases a direct report) (removing a member or detaching a project asks for confirmation, owner request
+      2026-10-14); My teams (employee): one row per team with search, state and project-health filters, and a
+      team panel (`?team=<id>`) for the manager, milestone detail and teammates (owner request 2026-10-14). Person profile panel mounted in the shell (`?person=<id>`),
+      so the manager Overview's people rows open it. Admin Overview gained Create user / Create project.
+- [x] Browser check (Playwright, 1440px and 390px, all three roles, no console errors); e2e suite
+      gained 3 flows (admin creates and archives an account, manager creates a team on a project and
+      detaches it, employee sees My teams) → 8 flows
+- [x] Docs: READMEs, TESTING.md, LOGIN.md, this file
+- [ ] Deferred: Employee Overview "project memberships" / "what comes next" blocks (My teams covers
+      them for now); department management (ADMIN.md §6.6, slice 8)
+- [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 5: My hours (employee)
 - [ ] `GET/POST/PATCH /me/time-entries` (no more than 24 h per entry, own tasks only), CSV export

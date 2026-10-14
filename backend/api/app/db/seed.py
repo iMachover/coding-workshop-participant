@@ -115,6 +115,19 @@ SEED_USERS: list[dict] = [
         "manager_username": "mgr002",
         "department": "OPS",
     },
+    {
+        # Reports to nobody yet: a manager takes them on from the employee list (My team).
+        "username": "emp005",
+        "password": "Employee123!",  # nosec B105
+        "first_name": "Alex",
+        "last_name": "Kim",
+        "email": "alex.kim@acme.test",
+        "job_title": "Storage Engineer",
+        "role": "employee",
+        "hourly_rate": 48,
+        "manager_username": None,
+        "department": "INF",
+    },
 ]
 
 # Dates are day offsets from today. Time entries are (weekdays ago, hours).

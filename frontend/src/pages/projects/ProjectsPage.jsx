@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -23,7 +24,7 @@ import { Meter } from '../../components/Meter';
 import { SectionCard } from '../../components/SectionCard';
 import { SidePanel } from '../../components/SidePanel';
 import { StatusChip } from '../../components/StatusChip';
-import { TableToolbar } from '../../components/TableToolbar';
+import { SearchBar } from '../../components/SearchBar';
 import { PageHeader } from '../../layout/PageHeader';
 import { fetchProjectOptions } from '../../services/projectsService';
 import { monoFont } from '../../theme';
@@ -40,18 +41,31 @@ const HEALTH_FILTERS = [
  * Projects page for every role (prototype `RolePage page="Projects"`): register banner,
  * searchable table, and a side panel per project. Admin creates and archives, manager
  * edits dates and budget of own projects, employee sees only joined projects and own figures.
- * `?selected=<id>` opens a project's panel, so other pages can link straight to it.
+ * `?selected=<id>` opens a project's panel, so other pages can link straight to it;
+ * `?create=1` opens the admin's create panel.
  */
 export function ProjectsPage() {
   const { user } = useAuth();
   const { open } = usePanelParams();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [creating, setCreating] = useState(false);
   const [options, setOptions] = useState(null);
   const { data: projects, error, retry } = useApiGet('/projects');
   const isAdmin = user.role === 'admin';
   const mine = user.role === 'employee';
+  // `?create=1` opens the create panel, so the Overview's Create project button lands here open.
+  const creating = isAdmin && params.get('create') === '1';
+  const setCreating = (on) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (on) next.set('create', '1');
+        else next.delete('create');
+        return next;
+      },
+      { replace: !on },
+    );
 
   useEffect(() => {
     if (isAdmin) fetchProjectOptions().then(setOptions, () => setOptions(null));
@@ -106,7 +120,7 @@ export function ProjectsPage() {
             count={visible.length}
             subtitle="Select a project for milestones, ownership, and details."
             action={
-              <TableToolbar
+              <SearchBar
                 search={search}
                 onSearch={setSearch}
                 placeholder="Search projects…"

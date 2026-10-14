@@ -12,12 +12,18 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OverviewPage } from './pages/overview/OverviewPage';
+import { PeoplePage } from './pages/people/PeoplePage';
 import { ProjectsPage } from './pages/projects/ProjectsPage';
+import { TeamManagerPage } from './pages/team/TeamManagerPage';
+import { TeamsEmployeePage } from './pages/teams/TeamsEmployeePage';
 
 /** Pages built so far, by path. Every other sidebar path shows the placeholder. */
 const BUILT_PAGES = {
   '/': OverviewPage,
   '/projects': ProjectsPage,
+  '/people': PeoplePage,
+  '/team': TeamManagerPage,
+  '/teams': TeamsEmployeePage,
 };
 
 /**

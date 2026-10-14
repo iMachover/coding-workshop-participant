@@ -15,7 +15,7 @@ This page lists everything a manager can do and nothing else.
    resources), assign each to an employee on the project.
 5. **Review work**: open the review queue, mark submitted tasks completed or reopen them,
    approve milestone completion, close the project.
-6. **Build the team**: create teams from my direct reports, add/remove members, attach/detach
+6. **Build the team**: take employees on from the employee list, create teams, add/remove members, attach/detach
    teams to my projects.
 7. **Manage people**: My team table with weekly allocation and task progress; profile view with
    projects, hours, cost, progress; edit first name, last name, email of direct reports.
@@ -28,9 +28,14 @@ Build order: 1, 2, 3, 4, 5 (core project loop), then 6, 7, 8, 9.
 
 - **My projects** = projects where `manager_id` is me. Admin creates projects and assigns the
   manager. Manager cannot create, delete, archive, or see archived projects.
-- **My direct reports** = users where `manager_id` is me, set by admin. One manager per employee.
+- **My direct reports** = users where `manager_id` is me. One manager per employee at a time
+  (WORKSHOP_NOTES.md). An employee starts unassigned; I take them on from the full employee list
+  (`POST /employees/{id}/assign`, or by putting them on a team), which sets `manager_id`, and I
+  release them back to the pool (`POST /employees/{id}/release`, 409 while they have open tasks;
+  takes them off my teams). Someone who reports to another manager is shown but blocked (400)
+  until an admin moves them. Decided with the owner 2026-10-14.
 - **Teams** are owned by a manager (`teams.manager_id`). Members must be the owner's direct
-  reports. Only the project's manager attaches teams, and only their own teams.
+  reports; an unassigned employee becomes one when added. Only the project's manager attaches teams, and only their own teams.
   (Cross-manager teams on one project = stretch.)
 - **Task assignee** must be on a team attached to the task's project, else 400 with a field error.
 - **Milestones**: sequence = last + 1 at creation, fixed afterwards (reorder = stretch).
@@ -124,11 +129,15 @@ Same app shell as the employee. Sidebar: Overview, Projects, My team, Reports, S
    milestone (code, title, assignee, status, planned / actual h and $, due) with [+ Task],
    [Complete], [Reopen]; attached teams with [Attach team]; [Close project] when eligible.
    Create / edit forms in nested drawers.
-3. **My team** (`/team`): header actions [Create team], [Assign employee]. Direct team table:
+3. **My team** (`/team`): header actions [Create team], [Assign employee] (team optional). Every people
+   picker is the same component (owner decision 2026-10-14, scalability): job title filter, name
+   search, first 25 matches from `GET /employees/search`, which offers only my direct reports and
+   unassigned employees (never another manager's) and hides people already on the team. Direct reports table:
    person (name, email), role / team, weekly allocation (logged / 40 h bar, free / over),
    task progress % completed, [View profile]. Search + filter. Side card: hours per team.
    Note: manager edits name and email only, not role. Profile drawer: editable name/email,
-   teams, projects, per-milestone progress, hours, cost, recent time entries.
+   teams, projects, per-milestone progress, hours, cost, recent time entries, [Release from your
+   reports] with confirmation.
    Teams section: team name, members, attached projects, add/remove, attach/detach.
 4. **Reports** (`/reports`): stat cards: actual project cost (across my projects), total
    budget, over-allocated people (count + name · h / 40). "Hours by project" card: one row per
@@ -169,18 +178,21 @@ depend on `get_current_user` and branch on `user["role"]`.
 | GET | /tasks/{id}/time-entries | all entries on a task on my project |
 | GET / POST | /teams | my teams / create |
 | PATCH | /teams/{id} | rename |
-| POST / DELETE | /teams/{id}/members/{user_id} | 400 unless my direct report |
+| POST / DELETE | /teams/{id}/members/{user_id} | takes an unassigned employee on; 400 if they report to another manager |
 | POST / DELETE | /projects/{id}/teams/{team_id} | my project + my team |
 | GET | /employees | my direct reports + hours this week / cost / progress |
 | GET | /employees/{id} | detail incl. projects, teams, progress, recent time entries; 403 unless direct report |
 | PATCH | /employees/{id} | first_name, last_name, email; direct reports only |
+| GET | /employees/search?q&job_title&exclude_team_id | people picker: first 25 of mine + unassigned, total count |
+| POST | /employees/{id}/assign | take an unassigned employee on as a direct report; 400 another manager's, 409 already mine |
+| POST | /employees/{id}/release | release a direct report to the pool and off my teams; 409 while they have open tasks |
 | GET / POST | /milestones/{id}/notes | shared |
 
 Status codes as EMPLOYEE.md, plus 409 Conflict for approve / close preconditions.
 
 ## 8. Dependencies on admin → seeded for now
 
-Admin creates users (with `manager_id`), departments, projects, assigns managers, sets rates.
+Admin creates users (unassigned by default; `manager_id` only to move someone between managers), departments, projects, assigns managers, sets rates.
 Seed already includes two managers so cross-manager 403 scoping can be tested.
 Replaced by real admin flows in the Admin slice.
 

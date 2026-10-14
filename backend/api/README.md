@@ -21,7 +21,11 @@ backend/api/
 │   │   ├── seed.py        # Idempotent dev users + sample data
 │   │   └── bootstrap.py   # CLI: python -m app.db.bootstrap
 │   ├── auth/              # POST /auth/login
-│   └── users/             # GET /me
+│   ├── users/             # GET /me, admin people management, manager's direct reports
+│   ├── overview/          # The three Overview endpoints and the shared project figures query
+│   ├── projects/          # Projects CRUD, archive and restore
+│   ├── work/              # Tasks, milestones, notes, close project
+│   └── teams/             # Manager teams and the employee's My teams
 ├── db/migrations/         # Numbered SQL migrations
 ├── tests/                 # pytest (runs against a real PostgreSQL database)
 └── postman/               # Postman collection
@@ -90,6 +94,35 @@ Health, progress and cost come from the same query the Overview pages use
 | POST | `/milestones/{id}/approve` | manager: 409 unless the milestone is unlocked and every task is completed; stamps completed_at and unlocks the next |
 | POST | `/milestones/{id}/notes` | employee or manager on the project (admins read only) |
 | POST | `/projects/{id}/close` | manager: 409 unless every milestone is approved; sets status closed |
+
+## People and team endpoints
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/users?q=&role=&department_id=&archived=&page=&limit=` | admin. One page (`limit` ≤ 100) of active people, or archived ones with `archived=true`; `q` matches name, email, username or `USR-` code. Each row carries hours this week, `over_capacity` (above 40 h), team names and task progress; the envelope adds `counts` per role. |
+| GET | `/users/options` | admin: active managers and departments for the person form |
+| GET | `/users/{id}` | admin: the row plus projects (managed or joined), teams, progress by milestone, the latest 10 time entries, lifetime hours and cost, `blockers` and `can_archive` |
+| POST | `/users` | admin. Body: first_name, last_name, email, job_title?, role, department_id?, manager_id?, hourly_rate, password (≥ 8). An employee starts unassigned unless `manager_id` names an active manager; managers and admins must not have one. The server generates a unique 6-character `[a-z0-9]` username and returns it in the profile; the admin shows it with the password once. |
+| PATCH | `/users/{id}` | admin: any field but the username. A role change is refused (409) while a manager owns active projects or has direct reports, or while an employee has open tasks; moving to manager or admin clears `manager_id`, moving to employee leaves them unassigned unless one is given. Writes an audit row only when something changed. |
+| POST | `/users/{id}/archive`, `/users/{id}/restore` | admin. Archiving has the same blockers as a role change, plus: never your own account, never the last active admin. An archived person cannot sign in (401) and leaves every list and picker; `restore` brings them back. 409 if already in that state. |
+| GET | `/employees?q=` | manager: active direct reports with the same figures as the admin's rows |
+| GET | `/employees/{id}` | manager: a direct report's profile (same shape as `/users/{id}`); 404 for anyone else |
+| PATCH | `/employees/{id}` | manager: first_name, last_name, email of a direct report; any other field is 403 |
+| POST | `/employees/{id}/assign` | manager: take an unassigned active employee on as a direct report (audit `assigned` on the user). 400 with `fields.user_id` when they report to another manager (an admin moves them), 409 if already a direct report, 404 for non-employees |
+| POST | `/employees/{id}/release` | manager: release a direct report (204): `manager_id` cleared and taken off every team the manager owns (audit `unassigned`). 404 unless a direct report, 409 while they have tasks that are not completed |
+| GET | `/teams` | manager: own teams with members (and their hours this week), attached projects and the team's hours this week |
+| GET | `/teams/{id}` | manager: one own team; 404 otherwise |
+| GET | `/employees/search?q=&job_title=&exclude_team_id=` | manager: the people picker. The first 25 (by last name) of the manager's own direct reports and unassigned employees, never another manager's or archived people; `q` matches name or email, `job_title` is exact, `exclude_team_id` hides that team's members. Returns `items` (id, name, email, job_title, manager_id null when unassigned, hours_this_week), `total` matches and `limit`, so the picker says "showing 25 of N" |
+| GET | `/teams/options` | manager: `job_titles` (distinct titles among the people they may pick, for the picker's filter) and active projects a team can be attached to |
+| POST | `/teams` | manager. Body: name, member_ids? (direct reports or unassigned employees, who become direct reports; 400 if another manager's), project_id? (own project, else 403) |
+| PATCH | `/teams/{id}` | manager: rename (403 for another manager's team) |
+| POST | `/teams/{id}/members/{user_id}` | manager: add a direct report, or an unassigned employee who becomes one (400 if they report to another manager); 409 if already a member |
+| DELETE | `/teams/{id}/members/{user_id}` | manager: remove a member (204); their tasks stay assigned |
+| POST | `/projects/{id}/teams/{team_id}` | manager: attach own team to own project (403 otherwise); 409 if already attached. Only members of an attached team can be given tasks on the project. |
+| DELETE | `/projects/{id}/teams/{team_id}` | manager: detach (204); existing tasks stay |
+| GET | `/me/teams` | employee: their manager, `active_milestone_id`, and each team with its members' progress (never their cost) and each project's current milestone, the employee's own progress and hours in it, and `is_active` when that milestone holds their work in progress |
+
+Codes are display-only: `USR-###` and `TEAM-##` are formatted from the id.
 
 ### Error format
 
@@ -184,7 +217,8 @@ The suite drops and recreates the `project_tracker_test` schema, applies the
 migrations and seed, then covers: hashing, token creation/expiry/tampering,
 login success and every failure path, `/me` with and without tokens, archived
 users, role checks, the error envelope, the Lambda path normalisation, and the
-three Overview endpoints (figures, role access, health and display states).
+three Overview endpoints (figures, role access, health and display states), the Projects,
+task and milestone, and people and team rules.
 Override the database with `POSTGRES_*` variables.
 
 Postman: import `postman/project-tracker-api.postman_collection.json`, set

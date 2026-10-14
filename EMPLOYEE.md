@@ -130,9 +130,12 @@ Loading, empty and error states per card; toasts on save success/failure.
 3. **My projects** (`/projects`): table: code, name, manager, dept, health chip, progress,
    my hours a/p, my cost, target end, Open. Search + status filter.
    Open → project drawer: milestones with lock state, my tasks per milestone, manager notes link.
-4. **My teams** (`/teams`): one card per team: team name, project, manager, current milestone,
-   my milestone progress, teammates with progress %. Side card: my manager (name, email).
-   Secondary teams show "next milestone will not activate until current is complete."
+4. **My teams** (`/teams`): one row per team: team name and manager, state (active / queued /
+   no work in progress), projects with their current milestone, my progress, head count.
+   Search + state and project-health filters. View team → side panel: manager, each project's
+   milestone with team and my progress, teammates with progress %, Open project. Side card:
+   my manager (name, email). Secondary teams show "next milestone will not activate until
+   current is complete."
 5. **My hours** (`/hours`): primary action [Log hours]. Stat cards: logged this week, 40 h
    capacity, my cost this week. Ledger table: date, task (+ project code), hours, cost,
    View / correct. Week navigation. Log-hours drawer: task (my in_progress/submitted tasks),

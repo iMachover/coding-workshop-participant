@@ -6,7 +6,7 @@ import { useAuth } from '../context/useAuth';
 /** What each role can see, stated under every page (prototype `.acme-footer`). */
 const SCOPE_BY_ROLE = {
   admin: 'Organization-wide visibility',
-  manager: 'Your projects and direct team only',
+  manager: 'Your projects and direct reports only',
   employee: 'Only your assigned work and personal data',
 };
 

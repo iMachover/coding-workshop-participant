@@ -22,16 +22,17 @@ Build order: 1, 3, 4, 5 (the admin's core duties and the MVP audit requirement),
 ## 2. Domain rules
 
 - Admin sees everything organization-wide, including archived records. Admin does NOT assign
-  employees to teams, attach teams to projects, create tasks, or approve milestones; those belong
-  to the project's manager.
+  employees to teams or managers, attach teams to projects, create tasks, or approve milestones;
+  those belong to the manager. Admin only moves an employee between managers (edit "Reports to").
 - **Create user**: first_name, last_name, email, job_title, role, department_id, manager_id
-  (required when role = employee, must be an active manager; must be null otherwise),
+  (optional when role = employee: usually left null, since managers take people on from the
+  employee list; when set, must be an active manager; must be null for other roles),
   hourly_rate, temporary password. Server generates a unique 6-character username
   ([a-z0-9], retry on collision) and returns it once. UI shows a copy-credentials dialog.
 - **Edit user**: any of the fields above except username; password reset = stretch.
 - **Role change** is admin-only. Blocked (409 with blocker list) while a manager owns active
   projects or an employee has not-completed tasks. employee → manager clears manager_id;
-  → employee requires a manager_id.
+  → employee starts unassigned unless the admin picks a manager_id.
 - **Archive user**: same blockers as role change. Archive sets is_archived; login is revoked at
   once; the user disappears from pickers and team lists; history is kept. Restore flips the flag.
   Admin cannot archive themselves or the last active admin.

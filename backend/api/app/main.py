@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.overview.routes import router as overview_router
 from app.projects.routes import router as projects_router
+from app.teams.routes import router as teams_router
 from app.users.routes import router as users_router
 from app.work.routes import router as work_router
 
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(overview_router)
     app.include_router(projects_router)
     app.include_router(work_router)
+    app.include_router(teams_router)
     return app
 
 

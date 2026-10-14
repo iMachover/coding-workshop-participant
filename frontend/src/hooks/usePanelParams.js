@@ -1,14 +1,18 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-/** URL keys of the stacked side panels, in the order they open. */
-export const PANEL_KEYS = ['selected', 'milestone', 'task'];
+/**
+ * URL keys of the side panels, in the order they stack. The first three nest
+ * (project → milestone → task); `person` (profile) and `team` (employee's team) stand alone.
+ * `team` comes last so opening a project from the team panel replaces it.
+ */
+export const PANEL_KEYS = ['selected', 'milestone', 'task', 'person', 'team'];
 
 /**
- * The side panels live in the URL (`?selected=<project>&milestone=<id>&task=<id>`) so any
- * page can open one with a plain link and the browser back button closes it.
+ * The side panels live in the URL (`?selected=<project>&milestone=<id>&task=<id>&person=<id>&team=<id>`)
+ * so any page can open one with a plain link and the browser back button closes it.
  *
- * @returns {{ ids: {selected: number|null, milestone: number|null, task: number|null},
+ * @returns {{ ids: {selected: number|null, milestone: number|null, task: number|null, person: number|null, team: number|null},
  *             open: (key: string, id: number) => void, close: (key: string) => void }}
  */
 export function usePanelParams() {

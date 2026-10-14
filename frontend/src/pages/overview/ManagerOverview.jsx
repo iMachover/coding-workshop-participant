@@ -201,6 +201,11 @@ function Content({ data }) {
             title="People & weekly capacity"
             count={people.length}
             subtitle={`Week of ${formatDay(week.start)} · your direct reports · ${formatHours(week.capacity_hours)} capacity`}
+            action={
+              <Button variant="text" size="small" component={RouterLink} to="/team" endIcon={<ArrowForwardOutlined />}>
+                My team
+              </Button>
+            }
           >
             <PeopleList people={people} capacity={week.capacity_hours} />
           </SectionCard>
@@ -296,6 +301,7 @@ function MilestoneMarker({ state, sequence }) {
 }
 
 function PeopleList({ people, capacity }) {
+  const { open } = usePanelParams();
   if (!people.length) {
     return <EmptyState text="No direct reports yet. People you manage appear here with their weekly hours." />;
   }
@@ -304,7 +310,14 @@ function PeopleList({ people, capacity }) {
     return (
       <Box
         key={person.id}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open profile of ${person.name}`}
+        onClick={() => open('person', person.id)}
+        onKeyDown={(event) => event.key === 'Enter' && open('person', person.id)}
         sx={{
+          cursor: 'pointer',
+          '&:hover': { bgcolor: '#f0f4e9' },
           display: 'grid',
           gridTemplateColumns: { xs: '1.3fr 1fr 64px', md: '1.2fr 1fr 75px' },
           alignItems: 'center',
