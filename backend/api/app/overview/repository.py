@@ -25,8 +25,18 @@ def project_rows(
     *,
     manager_id: int | None = None,
     project_ids: list[int] | None = None,
+    member_user_id: int | None = None,
+    include_archived: bool = False,
+    include_closed: bool = False,
+    query: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Active projects with task counts, planned/actual hours and cost, optionally filtered."""
+    """
+    Projects with task counts, planned/actual hours and cost, optionally filtered.
+
+    By default only active, non-archived projects. `member_user_id` keeps projects the
+    user is on through a team or an assigned task. `query` matches code, name or manager.
+    Shared with the projects domain so every page computes totals the same way.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -61,10 +71,12 @@ def project_rows(
                 GROUP BY m.project_id
             )
             SELECT p.id, p.code, p.name, p.description, p.start_date, p.end_date,
+                   p.status::text AS status, p.is_archived, p.department_id,
                    p.budget::float8 AS budget,
                    d.department_name AS department,
                    p.manager_id,
                    mu.first_name || ' ' || mu.last_name AS manager_name,
+                   coalesce(tn.names, '{}'::text[]) AS team_names,
                    coalesce(tt.tasks_total, 0) AS tasks_total,
                    coalesce(tt.tasks_completed, 0) AS tasks_completed,
                    coalesce(tt.planned_hours, 0)::float8 AS planned_hours,
@@ -79,15 +91,39 @@ def project_rows(
             FROM projects p
             JOIN departments d ON d.id = p.department_id
             JOIN users mu ON mu.id = p.manager_id
+            LEFT JOIN LATERAL (
+                SELECT array_agg(tm.name ORDER BY tm.name) AS names
+                FROM project_teams pt JOIN teams tm ON tm.id = pt.team_id
+                WHERE pt.project_id = p.id
+            ) tn ON TRUE
             LEFT JOIN task_totals tt ON tt.project_id = p.id
             LEFT JOIN hour_totals ht ON ht.project_id = p.id
             LEFT JOIN resource_totals rt ON rt.project_id = p.id
-            WHERE p.status = 'active' AND NOT p.is_archived
+            WHERE (%(include_closed)s OR p.status = 'active')
+              AND (%(include_archived)s OR NOT p.is_archived)
               AND (%(manager_id)s::bigint IS NULL OR p.manager_id = %(manager_id)s)
               AND (%(project_ids)s::bigint[] IS NULL OR p.id = ANY(%(project_ids)s))
+              AND (%(member)s::bigint IS NULL OR EXISTS (
+                      SELECT 1 FROM project_teams pt
+                      JOIN team_members mem ON mem.team_id = pt.team_id
+                      WHERE pt.project_id = p.id AND mem.user_id = %(member)s
+                  ) OR EXISTS (
+                      SELECT 1 FROM tasks t JOIN milestones m ON m.id = t.milestone_id
+                      WHERE m.project_id = p.id AND t.assigned_to = %(member)s
+                  ))
+              AND (%(query)s::text IS NULL
+                   OR p.code ILIKE %(query)s OR p.name ILIKE %(query)s
+                   OR (mu.first_name || ' ' || mu.last_name) ILIKE %(query)s)
             ORDER BY p.code
             """,
-            {"manager_id": manager_id, "project_ids": project_ids},
+            {
+                "manager_id": manager_id,
+                "project_ids": project_ids,
+                "member": member_user_id,
+                "include_archived": include_archived,
+                "include_closed": include_closed,
+                "query": f"%{query.strip()}%" if query and query.strip() else None,
+            },
         )
         return cur.fetchall()
 

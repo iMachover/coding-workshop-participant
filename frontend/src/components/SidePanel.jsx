@@ -5,6 +5,8 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import CloseOutlined from '@mui/icons-material/CloseOutlined';
 
+const panelRoot = () => document.getElementById('panel-root') ?? document.body;
+
 /**
  * Panel that slides in from the right for details and forms (prototype `Drawer`).
  * 460px wide on desktop, full width on phones. Escape or a click outside closes it.
@@ -19,6 +21,9 @@ export function SidePanel({ open, title, onClose, children, footer }) {
       anchor="right"
       open={open}
       onClose={onClose}
+      // Mount in its own container so opening the panel does not aria-hide the rest of the
+      // page (MUI hides every sibling of the modal's container), which would silence toasts.
+      ModalProps={{ container: panelRoot }}
       PaperProps={{
         sx: {
           width: { xs: '100%', sm: 460 },

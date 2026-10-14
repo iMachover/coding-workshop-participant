@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -101,7 +101,7 @@ function Content({ data }) {
         <SectionCard
           title="Project portfolio"
           count={visible.length}
-          subtitle="Every active project and the manager accountable for it."
+          subtitle="Every active project and the manager accountable for it. Select a row to open it."
           action={
             <TableToolbar
               search={search}
@@ -147,6 +147,7 @@ function Content({ data }) {
 }
 
 function PortfolioTable({ projects, filtered }) {
+  const navigate = useNavigate();
   if (!projects.length) {
     return (
       <EmptyState
@@ -169,7 +170,12 @@ function PortfolioTable({ projects, filtered }) {
         </TableHead>
         <TableBody>
           {projects.map((project) => (
-            <TableRow key={project.id}>
+            <TableRow
+              key={project.id}
+              hover
+              sx={{ cursor: 'pointer' }}
+              onClick={() => navigate(`/projects?selected=${project.id}`)}
+            >
               <TableCell>
                 <Typography sx={{ fontFamily: monoFont, fontSize: 10, color: '#7a8c7e', mb: 0.25 }}>{project.code}</Typography>
                 <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#294c49' }}>{project.name}</Typography>

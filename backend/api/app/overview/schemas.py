@@ -83,6 +83,7 @@ class AssignedTask(BaseModel):
     id: int
     code: str
     title: str
+    project_id: int
     project_code: str
     project_name: str
     milestone_name: str
@@ -149,6 +150,7 @@ class FocusProject(BaseModel):
     health: str
     end_date: date
     manager_name: str
+    team_names: list[str]
     progress: Progress
     budget: float
     planned_cost: float

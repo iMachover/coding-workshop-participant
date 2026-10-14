@@ -7,7 +7,7 @@ import { request } from '../services/apiClient';
  * Changing `path` loads the new one; the previous data stays visible until it arrives.
  * `retry` repeats the request after an error.
  *
- * @param {string} path API path, e.g. "/me/overview"
+ * @param {string|null} path API path, e.g. "/me/overview"; null loads nothing (data stays null)
  * @returns {{ data: any, error: import('../services/apiClient').ApiError|null, loading: boolean, retry: () => void }}
  */
 export function useApiGet(path) {
@@ -16,6 +16,7 @@ export function useApiGet(path) {
   const key = `${path}#${attempt}`;
 
   useEffect(() => {
+    if (path === null) return undefined;
     let cancelled = false;
     request(path).then(
       (data) => !cancelled && setResult({ key, data, error: null }),
@@ -27,6 +28,9 @@ export function useApiGet(path) {
   }, [path, key]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  if (path === null) {
+    return { data: null, error: null, loading: false, retry };
+  }
   const loading = result.key !== key;
   return { data: result.data, error: loading ? null : result.error, loading, retry };
 }

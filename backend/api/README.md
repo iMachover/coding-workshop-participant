@@ -60,6 +60,22 @@ One call fills each role's Overview page (`app/overview/`). All figures are comp
 Health is "at risk" when the active milestone is past its projected end or logged hours exceed
 planned hours. Cost is hours × the person's hourly rate plus task resources.
 
+## Project endpoints
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/projects?q=&archived=` | any signed-in user. Admin: every project (`archived=true` lists archived ones). Manager: projects they manage. Employee: projects they are on through a team or an assigned task, with a `mine` block (their planned/actual hours and cost). Every row carries `team_names` (empty until the manager links a team), `health` and `progress`. |
+| GET | `/me/projects` | employee alias of `GET /projects` (EMPLOYEE.md §7) |
+| GET | `/projects/{id}` | same scope as the list; 404 outside it. Adds the milestone sequence with lock state. |
+| GET | `/projects/options` | admin: active managers and departments for the project form |
+| POST | `/projects` | admin. Body: name, description?, department_id, manager_id, start_date, end_date, budget. The code is `PREFIX-NNN` from the department's counter. 400 with `fields` when dates are out of order or the manager is not an active manager. |
+| PATCH | `/projects/{id}` | admin: name, description, manager_id, start_date, end_date, budget. Manager: the same minus manager_id, only on their own projects (403 otherwise). Writes an audit row only when something changed. |
+| POST | `/projects/{id}/archive`, `/projects/{id}/restore` | admin. 409 if already in that state. Archived projects leave every list except the admin's `archived=true` list. |
+
+Every write records a row in `audit_log` through `app/core/audit.py` (`record` and `changes`).
+Health, progress and cost come from the same query the Overview pages use
+(`app/overview/repository.py: project_rows`), so every page agrees on the figures.
+
 ### Error format
 
 ```json

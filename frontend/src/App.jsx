@@ -11,10 +11,12 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OverviewPage } from './pages/overview/OverviewPage';
+import { ProjectsPage } from './pages/projects/ProjectsPage';
 
 /** Pages built so far, by path. Every other sidebar path shows the placeholder. */
 const BUILT_PAGES = {
   '/': OverviewPage,
+  '/projects': ProjectsPage,
 };
 
 /**

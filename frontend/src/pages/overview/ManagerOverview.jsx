@@ -1,6 +1,8 @@
 import PropTypes from 'prop-types';
 import { useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
@@ -8,13 +10,14 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AccessTimeOutlined from '@mui/icons-material/AccessTimeOutlined';
+import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
 import CheckOutlined from '@mui/icons-material/CheckOutlined';
 import LayersOutlined from '@mui/icons-material/LayersOutlined';
 import LockOutlined from '@mui/icons-material/LockOutlined';
 import PaidOutlined from '@mui/icons-material/PaidOutlined';
 import { useAuth } from '../../context/useAuth';
 import { useApiGet } from '../../hooks/useApiGet';
-import { HEALTH, MILESTONE_STATUS, TASK_STATUS } from '../../config/statuses';
+import { HEALTH, MILESTONE_STATUS, NO_TEAM, TASK_STATUS } from '../../config/statuses';
 import { EmptyState } from '../../components/EmptyState';
 import { FigureRow } from '../../components/FigureRow';
 import { HighlightBanner } from '../../components/HighlightBanner';
@@ -123,8 +126,10 @@ function Content({ data }) {
           meta={
             <>
               <StatusChip inverse status={focus.health} map={HEALTH} />
+              {focus.team_names.length === 0 && <StatusChip status="none" map={NO_TEAM} />}
               <Typography variant="body2">
                 Target {formatDate(focus.end_date)} · {focus.manager_name}
+                {focus.team_names.length > 0 && ` · ${focus.team_names.join(', ')}`}
               </Typography>
             </>
           }
@@ -138,6 +143,18 @@ function Content({ data }) {
             { label: 'Actual / planned hours', value: `${formatHours(focus.actual_hours)} / ${formatHours(focus.planned_hours)}` },
             { label: 'Budget', value: formatMoney(focus.budget) },
           ]}
+          aside={
+            <Button
+              variant="text"
+              size="small"
+              component={RouterLink}
+              to={`/projects?selected=${focus.id}`}
+              endIcon={<ArrowForwardOutlined />}
+              sx={{ color: '#dce8bf', justifySelf: 'start', px: 0 }}
+            >
+              Open project
+            </Button>
+          }
         />
       ) : (
         <Paper variant="outlined" sx={{ p: 2.5, mb: 2 }}>
@@ -362,7 +379,12 @@ Content.propTypes = {
       at_risk: PropTypes.number,
       pending_approvals: PropTypes.number,
     }).isRequired,
-    focus: PropTypes.shape({ name: PropTypes.string, milestones: PropTypes.arrayOf(milestoneShape) }),
+    focus: PropTypes.shape({
+      id: PropTypes.number,
+      name: PropTypes.string,
+      team_names: PropTypes.arrayOf(PropTypes.string),
+      milestones: PropTypes.arrayOf(milestoneShape),
+    }),
     review_queue: PropTypes.arrayOf(reviewShape).isRequired,
     people: PropTypes.arrayOf(personShape).isRequired,
   }).isRequired,

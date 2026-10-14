@@ -15,6 +15,7 @@ from app.auth.routes import router as auth_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.overview.routes import router as overview_router
+from app.projects.routes import router as projects_router
 from app.users.routes import router as users_router
 
 logging.getLogger().setLevel(logging.INFO)
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(overview_router)
+    app.include_router(projects_router)
     return app
 
 

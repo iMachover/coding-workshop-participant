@@ -60,7 +60,7 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 - [x] Overview page for each role, loading real data
 - [x] Shared components: StatCards, StatusChip, Meter, HighlightBanner, SectionCard, FigureRow, LoadState
 - [x] Checked 2026-10-13: 84 pytest tests pass, lint is clean, the build succeeds
-- [ ] Owner reviews and commits
+- [x] Owner reviewed and committed 2026-10-14 (1fd1b5d)
 
 ### Slice 1: shell and theme to match the prototype
 - [x] `theme.js` uses the prototype's colours and fonts (DM Sans and Manrope, loaded in `index.html`)
@@ -75,19 +75,34 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 - [x] Browser check at 1440px and 390px for all three roles: renders with real data, no console
       errors or failed requests (Playwright + Chromium installed as a dev dependency for slice 3)
 - [x] Docs: README layout, test commands and design references updated
-- [ ] Owner reviews
+- [x] Owner reviewed and committed 2026-10-14 (1fd1b5d)
 
 ### Slice 2: Projects (`/projects`, all roles)
-- [ ] API: `GET /projects` (scoped to the role), `GET /projects/{id}`
-- [ ] Employee Overview gains the prototype's "Your project memberships" table and
-      "What comes next" milestone sequence once `GET /me/projects` exists (needs API data;
-      not in `GET /me/overview` today)
-- [ ] API: `POST /projects` (admin), `PATCH /projects/{id}` (admin, or a manager changing only
-      dates and budget), `POST /projects/{id}/archive` (admin)
-- [ ] Shared audit helper used by every write
-- [ ] pytest (including role checks), Postman
-- [ ] Page and project side panel
-- [ ] Docs
+- [x] API: `GET /projects` (admin all, manager own, employee joined, `?q=` search, `?archived=` admin),
+      `GET /projects/{id}` with milestones and teams, `GET /me/projects` alias, `GET /projects/options`
+- [x] API: `POST /projects` (admin, code generated from the department counter), `PATCH /projects/{id}`
+      (admin any field incl. manager; manager only name, description, dates, budget of own projects),
+      `POST /projects/{id}/archive` and `/restore` (admin, 409 if already in that state)
+- [x] Shared audit helper `app/core/audit.py` (`record`, `changes`); every write records a row, an
+      unchanged PATCH records nothing
+- [x] Totals come from the Overview query (`project_rows`, now with scope filters) so pages agree
+- [x] pytest: 25 tests (scoping per role, 401/403/404, validation 400s with `fields`, audit rows,
+      archive/restore) → 109 total; Postman "Projects" folder (24 requests, per-role JWT logins)
+- [x] Page: register banner, searchable table with health filter, project side panel (figures,
+      milestone chain, edit, archive with confirm), create form; `?selected=<id>` deep link
+- [x] Overview pages link to the panel: admin portfolio rows, manager "Open project", employee task rows
+- [x] Projects without a team are flagged (owner request 2026-10-14): every project row carries
+      `team_names`; the table, the panel (with a "assign one from My team" note for the manager),
+      the register banner ("Without a team" count) and the manager's Overview banner show an amber
+      "No team assigned" badge until a team is linked (slice 4)
+- [x] `useApiGet` accepts a null path; `SidePanel` mounts in its own container so an open panel does
+      not aria-hide toasts
+- [x] Browser check (Playwright): admin create → toast → panel → archive; manager edit without a
+      manager field; employee read-only panel with own cost; phone width; no console errors
+- [x] Docs: README status, endpoints and layout; backend README "Project endpoints"
+- [ ] Deferred to slice 3: milestone notes and task approval inside the panel; `POST /projects/{id}/close`
+- [ ] Deferred: Employee Overview "project memberships" / "what comes next" blocks (need `GET /me/teams`)
+- [ ] Owner reviews
 
 ### Slice 3: tasks and milestones
 - [ ] Employee: `PATCH /tasks/{id}/status`, forward only; 409 if another milestone is already active

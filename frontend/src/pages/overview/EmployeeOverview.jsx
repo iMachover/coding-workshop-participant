@@ -1,6 +1,8 @@
 import PropTypes from 'prop-types';
+import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
+import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -189,9 +191,14 @@ function TaskTable({ tasks }) {
                   {task.code} · {task.milestone_name}
                 </Typography>
                 <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#294c49' }}>{task.title}</Typography>
-                <Typography color="text.secondary" component="p" sx={{ fontSize: 10, mt: 0.25 }}>
+                <Link
+                  component={RouterLink}
+                  to={`/projects?selected=${task.project_id}`}
+                  underline="hover"
+                  sx={{ display: 'block', fontSize: 10, mt: 0.25, color: 'text.secondary' }}
+                >
                   {task.project_name}
-                </Typography>
+                </Link>
               </TableCell>
               <TableCell>
                 <StatusChip status={task.display_status} map={TASK_STATUS} />
@@ -236,6 +243,7 @@ const taskShape = PropTypes.shape({
   id: PropTypes.number.isRequired,
   code: PropTypes.string.isRequired,
   title: PropTypes.string.isRequired,
+  project_id: PropTypes.number,
   project_name: PropTypes.string,
   milestone_name: PropTypes.string,
   status: PropTypes.string.isRequired,

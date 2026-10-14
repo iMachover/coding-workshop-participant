@@ -18,7 +18,9 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | Seed: 7 accounts plus sample departments, projects, teams, tasks, hours and audit history | Done ([LOGIN.md](LOGIN.md)) |
 | App shell: sidebar, top bar, page header, role-based routes | Done |
 | Overview page for each role (read-only, real data) | Done; its action buttons come with later slices |
-| Employee pages and API: My projects, My teams, My hours, Settings | Next ([EMPLOYEE.md](EMPLOYEE.md)) |
+| Projects page and API for all roles (list, detail, create, edit, archive) | Done ([BUILD_PLAN.md](BUILD_PLAN.md) slice 2) |
+| Tasks and milestones workflow | Next (slice 3) |
+| Employee pages and API: My teams, My hours, Settings | Later ([EMPLOYEE.md](EMPLOYEE.md)) |
 | Manager pages and API beyond Overview | Not started ([MANAGER.md](MANAGER.md)) |
 | Admin pages and API beyond Overview | Not started ([ADMIN.md](ADMIN.md)) |
 | Deployed and checked on LocalStack / AWS | Not yet |
@@ -33,6 +35,12 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | GET | `/me/overview` | employee |
 | GET | `/manager/overview?project_id=` | manager |
 | GET | `/admin/overview` | admin |
+| GET | `/projects?q&archived` | any signed-in user; admin sees all, manager own, employee joined (`/me/projects` alias) |
+| GET | `/projects/{id}` | same scope; 404 outside it |
+| GET | `/projects/options` | admin: managers and departments for the form |
+| POST | `/projects` | admin |
+| PATCH | `/projects/{id}` | admin (any field incl. manager); manager (name, description, dates, budget of own) |
+| POST | `/projects/{id}/archive`, `/restore` | admin |
 | GET | `/health` | anyone |
 
 ## Tech stack
@@ -59,13 +67,14 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 │       ├── layout/                # AppShell, Sidebar, TopBar, Footer, PageHeader
 │       ├── config/statuses.js     # Labels and colours for task, milestone and health states
 │       ├── pages/                 # Login, placeholder, no-access, not-found pages
-│       │   └── overview/          # Overview page, one version per role
+│       │   ├── overview/          # Overview page, one version per role
+│       │   └── projects/          # Projects page, project side panel, create/edit form
 │       ├── components/            # ProtectedRoute, stat cards, status chips, banners, meters,
 │       │                          #   side panel, table toolbar, person cell, empty state
 │       ├── hooks/                 # useApiGet (load one API path)
 │       ├── utils/format.js        # Money, hours and date formatting
 │       ├── context/               # AuthProvider (signed-in user, login, logout), ToastProvider
-│       └── services/              # API client and auth calls
+│       └── services/              # API client, auth calls, project writes
 ├── infra/                 # Terraform
 ├── bin/                   # Start, deploy and setup scripts
 └── docs/                  # Workshop guides
@@ -121,7 +130,7 @@ Three roles, enforced in two places:
 ## Tests and checks
 
 ```sh
-cd backend/api && .venv/bin/python -m pytest   # 84 tests, needs PostgreSQL (see backend README)
+cd backend/api && .venv/bin/python -m pytest   # 109 tests, needs PostgreSQL (see backend README)
 cd frontend && npm run lint && npm run build
 ```
 
