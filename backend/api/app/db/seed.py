@@ -4,8 +4,8 @@ Idempotent development seed.
 Creates the accounts and sample data the role flows need until the admin and
 manager flows exist (EMPLOYEE.md §8). Every record is only inserted when it is
 missing (users by username, departments by prefix, projects by code, teams by
-name and manager), so re-running on every cold start is cheap and never
-overwrites real data. Dev passwords are listed in backend/api/README.md;
+name and manager; the sample audit history only goes into an empty audit log),
+so re-running on every cold start is cheap and never overwrites real data. Dev passwords are listed in backend/api/README.md;
 change them before any shared deployment.
 
 Sample dates are relative to the day the seed first runs, so a fresh database
@@ -16,6 +16,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from app.core.security import hash_password
 
@@ -308,6 +309,58 @@ SEED_TEAMS: list[dict] = [
     {"name": "Asset Control", "manager": "mgr002", "members": ["emp004"], "projects": ["OPS-018"]},
 ]
 
+# Sample history for the admin Overview and Audit pages, matching the records above.
+# Entity keys: project code, username, task title, milestone name or team name. Age is hours ago.
+SEED_AUDIT: list[dict] = [
+    {
+        "actor": "adm001", "action": "created", "entity": ("project", "INF-024"), "age": 56 * 24,
+        "summary": "Created project Legacy server retirement",
+        "details": {"after": {"name": "Legacy server retirement", "manager": "mgr001", "budget": 110000}},
+    },
+    {
+        "actor": "mgr001", "action": "created", "entity": ("team", "Server Ops"), "age": 55 * 24,
+        "summary": "Created team Server Ops with 3 members",
+        "details": {"after": {"name": "Server Ops", "members": ["emp001", "emp002", "emp003"]}},
+    },
+    {
+        "actor": "mgr001", "action": "approved", "entity": ("milestone", "Inventory and dependency mapping"),
+        "age": 27 * 24,
+        "summary": "Approved milestone Inventory and dependency mapping",
+        "details": {"before": {"status": "in_progress"}, "after": {"status": "completed"}},
+    },
+    {
+        "actor": "adm001", "action": "created", "entity": ("user", "emp004"), "age": 21 * 24,
+        "summary": "Created employee account for Casey Nguyen",
+        "details": {"after": {"role": "employee", "department": "OPS", "manager": "mgr002"}},
+    },
+    {
+        "actor": "adm001", "action": "created", "entity": ("project", "OPS-018"), "age": 14 * 24,
+        "summary": "Created project Asset inventory alignment",
+        "details": {"after": {"name": "Asset inventory alignment", "manager": "mgr002", "budget": 45000}},
+    },
+    {
+        "actor": "adm001", "action": "updated", "entity": ("project", "INF-024"), "age": 48,
+        "summary": "Updated project budget from $110,000 to $120,000",
+        "details": {"before": {"budget": 110000}, "after": {"budget": 120000}},
+    },
+    {
+        "actor": "emp002", "action": "submitted", "entity": ("task", "Cut over DNS and load balancer"), "age": 24,
+        "summary": "Submitted task Cut over DNS and load balancer for review",
+        "details": {"before": {"status": "in_progress"}, "after": {"status": "submitted"}},
+    },
+    {
+        "actor": "emp001", "action": "logged_hours", "entity": ("task", "Migrate file services to new cluster"),
+        "age": 20,
+        "summary": "Logged 6.5 h on Migrate file services to new cluster",
+        "details": {"after": {"hours": 6.5}},
+    },
+    {
+        "actor": "mgr001", "action": "noted", "entity": ("milestone", "Workload migration"), "age": 3,
+        "summary": "Added a note on milestone Workload migration",
+        "details": {},
+    },
+]
+
 
 def apply_seed(conn: psycopg.Connection) -> int:
     """Insert any missing seed records. Returns how many users were created."""
@@ -316,11 +369,14 @@ def apply_seed(conn: psycopg.Connection) -> int:
         users, created_users = _seed_users(cur, departments)
         created_projects = _seed_projects(cur, departments, users)
         created_teams = _seed_teams(cur, users)
+        created_audit = _seed_audit(cur, users)
     conn.commit()
     if created_users:
         logger.info("Seeded %d user(s)", created_users)
     if created_projects or created_teams:
         logger.info("Seeded %d sample project(s) and %d team(s)", created_projects, created_teams)
+    if created_audit:
+        logger.info("Seeded %d audit log entr(ies)", created_audit)
     return created_users
 
 
@@ -516,6 +572,55 @@ def _seed_teams(cur: psycopg.Cursor, users: dict[str, int]) -> int:
         )
         created += 1
     return created
+
+
+def _seed_audit(cur: psycopg.Cursor, users: dict[str, int]) -> int:
+    """Insert the sample history, but only into an empty audit log so real history is never mixed in."""
+    cur.execute("SELECT 1 FROM audit_log LIMIT 1")
+    if cur.fetchone():
+        return 0
+    now = datetime.now(timezone.utc)
+    created = 0
+    for entry in SEED_AUDIT:
+        entity = _resolve_audit_entity(cur, *entry["entity"])
+        if entity is None:
+            continue
+        cur.execute(
+            """
+            INSERT INTO audit_log
+                (actor_user_id, action, entity_type, entity_id, entity_code, summary, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                users[entry["actor"]],
+                entry["action"],
+                entry["entity"][0],
+                entity[0],
+                entity[1],
+                entry["summary"],
+                Jsonb(entry["details"]),
+                now - timedelta(hours=entry["age"]),
+            ),
+        )
+        created += 1
+    return created
+
+
+def _resolve_audit_entity(cur: psycopg.Cursor, entity_type: str, key: str) -> tuple[int, str] | None:
+    """(id, display code) of a seeded record, or None if it is missing."""
+    queries = {
+        "project": "SELECT id, code FROM projects WHERE code = %s",
+        "user": "SELECT id, 'USR-' || lpad(id::text, 3, '0') AS code FROM users WHERE username = %s",
+        "task": "SELECT id, code FROM tasks WHERE title = %s ORDER BY id LIMIT 1",
+        "milestone": (
+            "SELECT m.id, p.code FROM milestones m JOIN projects p ON p.id = m.project_id "
+            "WHERE m.name = %s ORDER BY m.id LIMIT 1"
+        ),
+        "team": "SELECT id, 'TEAM-' || lpad(id::text, 2, '0') AS code FROM teams WHERE name = %s ORDER BY id LIMIT 1",
+    }
+    cur.execute(queries[entity_type], (key,))
+    row = cur.fetchone()
+    return (row["id"], row["code"]) if row else None
 
 
 def _weekdays_before(day: date, count: int) -> date:

@@ -1,6 +1,6 @@
 """Tests for the development seed's sample data."""
 
-from app.db.seed import apply_seed
+from app.db.seed import _resolve_audit_entity, apply_seed
 
 
 def _count(conn, sql: str, params: tuple = ()) -> int:
@@ -54,8 +54,20 @@ def test_seeded_employees_have_at_most_one_active_milestone(conn):
 
 
 def test_reseeding_creates_nothing(conn):
-    tables = ("users", "departments", "projects", "milestones", "tasks", "time_entries", "teams")
+    tables = ("users", "departments", "projects", "milestones", "tasks", "time_entries", "teams", "audit_log")
     before = {t: _count(conn, f"SELECT count(*) AS n FROM {t}") for t in tables}  # nosec B608 - fixed names
     assert apply_seed(conn) == 0
     after = {t: _count(conn, f"SELECT count(*) AS n FROM {t}") for t in tables}  # nosec B608 - fixed names
     assert after == before
+
+
+def test_sample_audit_history_points_at_real_records(conn):
+    rows = conn.execute("SELECT entity_type, entity_code FROM audit_log").fetchall()
+    assert len(rows) >= 4
+    assert ("project", "INF-024") in {(r["entity_type"], r["entity_code"]) for r in rows}
+
+
+def test_audit_entity_lookup_skips_missing_records(conn):
+    with conn.cursor() as cur:
+        assert _resolve_audit_entity(cur, "project", "NOPE-000") is None
+        assert _resolve_audit_entity(cur, "user", "emp001")[1].startswith("USR-")

@@ -45,6 +45,21 @@ backend/api/
   routes (returns `403 FORBIDDEN`). `GET /users` (admin only, lists every
   user) is the first route that uses it.
 
+## Overview endpoints
+
+One call fills each role's Overview page (`app/overview/`). All figures are computed on read:
+
+- `GET /me/overview` (employee): stat cards, the active milestone, open tasks with Blocked /
+  Queued display states, this week's and lifetime hours and cost.
+- `GET /manager/overview?project_id=` (manager): stat cards, the project in focus (default: the
+  first one) with its milestone sequence, the review queue and direct reports' weekly hours.
+  `403` if `project_id` is not one of the manager's active projects.
+- `GET /admin/overview` (admin): portfolio totals, every active project, manager coverage and
+  the latest 4 audit entries.
+
+Health is "at risk" when the active milestone is past its projected end or logged hours exceed
+planned hours. Cost is hours × the person's hourly rate plus task resources.
+
 ### Error format
 
 ```json
@@ -94,7 +109,8 @@ Seeded development accounts (change before any shared deployment):
 (Operations). The seed also creates sample data so every page has something to
 show: 2 departments, 2 projects (INF-024 under `mgr001` with 3 milestones,
 OPS-018 under `mgr002` with 2), a team per manager attached to its project,
-tasks with resources, a week of logged hours, and a milestone note thread.
+tasks with resources, a week of logged hours, a milestone note thread, and a
+sample audit history (only written into an empty audit log).
 Sample dates are relative to the day the seed first runs.
 
 ## Run locally without LocalStack
@@ -136,7 +152,8 @@ exist`) means one of these two steps is missing.
 The suite drops and recreates the `project_tracker_test` schema, applies the
 migrations and seed, then covers: hashing, token creation/expiry/tampering,
 login success and every failure path, `/me` with and without tokens, archived
-users, role checks, the error envelope, and the Lambda path normalisation.
+users, role checks, the error envelope, the Lambda path normalisation, and the
+three Overview endpoints (figures, role access, health and display states).
 Override the database with `POSTGRES_*` variables.
 
 Postman: import `postman/project-tracker-api.postman_collection.json`, set

@@ -23,12 +23,12 @@ VM, LocalStack, AWS) has the same accounts.
 
 | To check | Log in as | Seeded data they have |
 |----------|-----------|-----------------------|
-| Admin pages (Overview, Projects, People & access, Audit activity, Archives, Settings) | `adm001` | Sees every project and user |
+| Admin pages (Overview, Projects, People & access, Audit activity, Archives, Settings) | `adm001` | Sees every project and user, plus 9 sample audit entries |
 | A manager with a busy project | `mgr001` | Manages INF-024 "Legacy server retirement" (3 milestones) and team "Server Ops" |
 | A second manager, to test that managers only see their own projects | `mgr002` | Manages OPS-018 "Asset inventory alignment" (2 milestones) and team "Asset Control" |
 | An employee with work in progress and recent hours | `emp001` | A task in progress on INF-024, hours logged on each of the last 5 weekdays, a milestone note |
 | An employee with work waiting for review | `emp002` | A submitted task on INF-024 |
-| An employee with nothing started yet | `emp003` | Only assigned tasks in the current milestone |
+| An employee with nothing started yet | `emp003` | Only assigned tasks: one in the current milestone, one Blocked in the next |
 | An employee on the other manager's project | `emp004` | A task in progress on OPS-018 |
 
 ## How login works

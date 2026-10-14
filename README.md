@@ -9,15 +9,18 @@ This README is kept current: every change that adds, renames or removes a featur
 
 ## Status
 
+The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
+
 | Area | State |
 |------|-------|
 | Login with JWT, roles `admin` / `manager` / `employee` | Done |
 | Database: all 13 tables (migrations 001 and 002) | Done |
-| Seed: 7 accounts plus sample departments, projects, teams, tasks and hours | Done ([LOGIN.md](LOGIN.md)) |
-| App shell: sidebar, top bar, page header, role-based routes | Done; every page is still a placeholder |
-| Employee pages and API: Overview, My projects, My teams, My hours, Settings | Next ([EMPLOYEE.md](EMPLOYEE.md)) |
-| Manager pages and API | Not started ([MANAGER.md](MANAGER.md)) |
-| Admin pages and API | Not started ([ADMIN.md](ADMIN.md)) |
+| Seed: 7 accounts plus sample departments, projects, teams, tasks, hours and audit history | Done ([LOGIN.md](LOGIN.md)) |
+| App shell: sidebar, top bar, page header, role-based routes | Done |
+| Overview page for each role (read-only, real data) | Done; its action buttons come with later slices |
+| Employee pages and API: My projects, My teams, My hours, Settings | Next ([EMPLOYEE.md](EMPLOYEE.md)) |
+| Manager pages and API beyond Overview | Not started ([MANAGER.md](MANAGER.md)) |
+| Admin pages and API beyond Overview | Not started ([ADMIN.md](ADMIN.md)) |
 | Deployed and checked on LocalStack / AWS | Not yet |
 
 ### API endpoints so far
@@ -27,6 +30,9 @@ This README is kept current: every change that adds, renames or removes a featur
 | POST | `/auth/login` | anyone |
 | GET | `/me` | any signed-in user |
 | GET | `/users` | admin |
+| GET | `/me/overview` | employee |
+| GET | `/manager/overview?project_id=` | manager |
+| GET | `/admin/overview` | admin |
 | GET | `/health` | anyone |
 
 ## Tech stack
@@ -40,6 +46,7 @@ This README is kept current: every change that adds, renames or removes a featur
 
 ```
 ├── README.md              # This file
+├── BUILD_PLAN.md          # Build tracker: slices, checklists, decisions
 ├── LOGIN.md               # Dev accounts and how login works
 ├── EMPLOYEE.md            # Employee role spec: flows, tables, pages, API, build checklist (§9)
 ├── MANAGER.md             # Manager role spec
@@ -49,10 +56,15 @@ This README is kept current: every change that adds, renames or removes a featur
 ├── frontend/              # React app
 │   └── src/
 │       ├── config/navigation.js   # Each role's pages; also the route allow-list
-│       ├── layout/                # AppShell, Sidebar, TopBar, PageHeader
+│       ├── layout/                # AppShell, Sidebar, TopBar, Footer, PageHeader
+│       ├── config/statuses.js     # Labels and colours for task, milestone and health states
 │       ├── pages/                 # Login, placeholder, no-access, not-found pages
-│       ├── components/            # ProtectedRoute
-│       ├── context/               # AuthProvider (signed-in user, login, logout)
+│       │   └── overview/          # Overview page, one version per role
+│       ├── components/            # ProtectedRoute, stat cards, status chips, banners, meters,
+│       │                          #   side panel, table toolbar, person cell, empty state
+│       ├── hooks/                 # useApiGet (load one API path)
+│       ├── utils/format.js        # Money, hours and date formatting
+│       ├── context/               # AuthProvider (signed-in user, login, logout), ToastProvider
 │       └── services/              # API client and auth calls
 ├── infra/                 # Terraform
 ├── bin/                   # Start, deploy and setup scripts
@@ -109,13 +121,15 @@ Three roles, enforced in two places:
 ## Tests and checks
 
 ```sh
-cd backend/api && .venv/bin/python -m pytest   # 46 tests, needs PostgreSQL (see backend README)
+cd backend/api && .venv/bin/python -m pytest   # 84 tests, needs PostgreSQL (see backend README)
 cd frontend && npm run lint && npm run build
 ```
 
 ## Design references
 
 - Role specs: [EMPLOYEE.md](EMPLOYEE.md), [MANAGER.md](MANAGER.md), [ADMIN.md](ADMIN.md)
+- UI prototype (source of truth for layout, wording and behaviour; rebuilt here in MUI):
+  [assets/acme-react-handoff/](assets/acme-react-handoff/), screenshots in `assets/{admin,manager,employee}/`
 - Database ER diagram and schema (private artifact, shared by its owner):
   https://claude.ai/artifact/KmULYg6BtBBdedS25Mtr5Z
 - Workshop rules: [WORKSHOP_GUIDELINES.md](WORKSHOP_GUIDELINES.md),

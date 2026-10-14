@@ -31,6 +31,7 @@ from app.main import app  # noqa: E402
 
 SEED_EMPLOYEE = {"username": "emp001", "password": "Employee123!"}
 SEED_ADMIN = {"username": "adm001", "password": "Admin123!"}
+SEED_MANAGER = {"username": "mgr001", "password": "Manager123!"}
 
 
 @pytest.fixture(scope="session", autouse=True)
