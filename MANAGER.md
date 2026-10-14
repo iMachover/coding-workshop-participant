@@ -1,8 +1,7 @@
 # Manager MVP
 
-Source of truth: WORKSHOP_GUIDELINES.md, WORKSHOP_NOTES.md, assets/manager/*.png
-(Overview and My-team; Projects-milestones / Reports / Settings exports are broken and
-pending re-export). Builds on EMPLOYEE.md: same tables, same Lambda, same auth.
+Source of truth: WORKSHOP_GUIDELINES.md, WORKSHOP_NOTES.md, assets/manager/*.png (all five
+screens). Builds on EMPLOYEE.md: same tables, same Lambda, same auth.
 This page lists everything a manager can do and nothing else.
 
 ## 1. User flows (build order)
@@ -21,8 +20,9 @@ This page lists everything a manager can do and nothing else.
 7. **Manage people**: My team table with weekly allocation and task progress; profile view with
    projects, hours, cost, progress; edit first name, last name, email of direct reports.
 8. **Milestone notes**: read and reply to employee notes.
+9. **Reports**: hours and cost across my projects, weekly resource cost, over-allocated people.
 
-Build order: 1, 2, 3, 4, 5 (core project loop), then 6, 7, 8.
+Build order: 1, 2, 3, 4, 5 (core project loop), then 6, 7, 8, 9.
 
 ## 2. Domain rules
 
@@ -77,6 +77,7 @@ Build order: 1, 2, 3, 4, 5 (core project loop), then 6, 7, 8.
 | People | Profile: projects, teams, hours, cost, progress, time entries | — |
 | People | Edit direct report first_name / last_name / email | users, audit_log |
 | Notes | Read / add milestone note | milestone_notes, audit_log |
+| Reports | Totals across my projects, hours by project, weekly resource cost (last 5 weeks), over-allocated people, budget and hours remaining | — |
 
 ## 4. Data requirements
 
@@ -85,7 +86,10 @@ their projects, and their direct reports' profiles.
 
 Computed, never stored: per project and per milestone — planned cost, actual cost, remaining,
 actual hours vs predicted, progress %, health; per employee — hours this week / 40, cost,
-progress across my projects; milestone lock state; review queue; pending-approvals count.
+progress across my projects; milestone lock state; review queue; pending-approvals count;
+reports — totals across my projects, weekly resource cost series (Σ time_entries.hours × rate
+per ISO week, last 5 weeks), over-allocated people (logged > 40 h this week), budget remaining,
+hours remaining (Σ predicted − Σ logged).
 
 ## 5. Database changes
 
@@ -108,23 +112,38 @@ Same app shell as the employee. Sidebar: Overview, Projects, My team, Reports, S
    "Ready for review" card: submitted tasks (employee, task, project · milestone, actual /
    planned h and $, [Review submission] → complete or reopen). People & weekly capacity:
    direct reports with logged / 40 h bar and task progress %. Budget card: used %.
-2. **Projects** (`/projects`) [mockup pending re-export; designed from Overview]:
-   projects table (code, name, dept, health, progress, planned / actual cost, hours, target end,
-   Open). Open → project page: milestone list with [+ Milestone], [Approve]; tasks table per
+2. **Projects** (`/projects`): "Assigned project register" banner: project count, "Managed by
+   <me>", actual project hours, actual / total budget across my projects. "Active projects"
+   table: project (code, name, manager · dept), health chip, delivery progress % bar,
+   actual / planned hours, cost / budget, target end, Open. Search + status filter.
+   Footer note: "Project dates and costs are estimates. Completion requires manager approval of
+   all milestones." Two info cards: dependency chain (one active milestone per employee) and
+   "Open a project to update its dates, budget, milestone sequence, and approvals."
+   Open → project detail drawer (not in mockups; designed from the Overview screen): details
+   with [Edit dates & budget]; milestone list with [+ Milestone], [Approve]; tasks table per
    milestone (code, title, assignee, status, planned / actual h and $, due) with [+ Task],
    [Complete], [Reopen]; attached teams with [Attach team]; [Close project] when eligible.
-   Create / edit forms in right-side drawers.
+   Create / edit forms in nested drawers.
 3. **My team** (`/team`): header actions [Create team], [Assign employee]. Direct team table:
    person (name, email), role / team, weekly allocation (logged / 40 h bar, free / over),
    task progress % completed, [View profile]. Search + filter. Side card: hours per team.
    Note: manager edits name and email only, not role. Profile drawer: editable name/email,
    teams, projects, per-milestone progress, hours, cost, recent time entries.
    Teams section: team name, members, attached projects, add/remove, attach/detach.
-4. **Reports** (`/reports`): out of MVP until mockup re-exported. Nav item hidden.
-5. **Settings** (`/settings`): same as employee (name, email, role badge).
+4. **Reports** (`/reports`): stat cards: actual project cost (across my projects), total
+   budget, over-allocated people (count + name · h / 40). "Hours by project" card: one row per
+   project with actual / planned hours bar and "actual / planned cost · delivery %" caption.
+   "Weekly resource cost" bar chart: last 5 weeks, one bar per week labelled with $ and week
+   start date. Side "Planning note" card: project needing attention (At risk, budget used % vs
+   delivery %), budget remaining, hours remaining, [Review projects] → Projects page.
+   Omitted from mockup: forecast variance card, Export CSV, Download data.
+5. **Settings** (`/settings`): "Account & preferences" card: full name, email, role badge
+   (Manager, "administered by your organization"), [Save]. Side card explains the manager's
+   scope. Same component as the employee Settings page.
 
 Out of MVP (visible in mockups, omitted): forecast at completion, forecast variance, blended
-rate, capacity-signal copy, notifications.
+rate, capacity-signal copy, notification preferences (task completion requests, over-capacity
+changes, milestone and budget alerts), planning-week selector.
 
 ## 7. API (manager role; project-scoped routes 403 unless I manage it)
 
@@ -134,6 +153,7 @@ depend on `get_current_user` and branch on `user["role"]`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | /manager/overview?project_id | stat cards + project in focus + milestones + review queue + people capacity |
+| GET | /manager/reports | totals, hours by project, weekly cost series (5 weeks), over-allocated people, remaining budget / hours |
 | GET | /projects | my projects + dept + health + planned/actual cost + hours + progress |
 | PATCH | /projects/{id} | name, description, start_date, end_date, budget |
 | POST | /projects/{id}/close | 409 unless all milestones completed |
@@ -170,5 +190,5 @@ A. Milestone reorder / insert-between.
 B. Manager or admin editing hourly rates.
 C. Teams from other managers contributing to my project.
 D. Notification / escalation when an employee posts a note.
-E. Reports page (await re-exported mockup).
+E. Reports: Export CSV and Download data.
 F. Forecast at completion and variance.
