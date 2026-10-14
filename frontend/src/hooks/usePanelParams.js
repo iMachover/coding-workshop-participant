@@ -4,15 +4,16 @@ import { useSearchParams } from 'react-router-dom';
 /**
  * URL keys of the side panels, in the order they stack. The first three nest
  * (project → milestone → task); `person` (profile) and `team` (employee's team) stand alone.
- * `team` comes last so opening a project from the team panel replaces it.
+ * `team` comes after them so opening a project from the team panel replaces it; `log` (log hours,
+ * `?log=<task id>` or `?log=0` to pick the task) is last so it can open on top of anything.
  */
-export const PANEL_KEYS = ['selected', 'milestone', 'task', 'person', 'team'];
+export const PANEL_KEYS = ['selected', 'milestone', 'task', 'person', 'team', 'log'];
 
 /**
- * The side panels live in the URL (`?selected=<project>&milestone=<id>&task=<id>&person=<id>&team=<id>`)
+ * The side panels live in the URL (`?selected=<project>&milestone=<id>&task=<id>&person=<id>&team=<id>&log=<task>`)
  * so any page can open one with a plain link and the browser back button closes it.
  *
- * @returns {{ ids: {selected: number|null, milestone: number|null, task: number|null, person: number|null, team: number|null},
+ * @returns {{ ids: {selected: number|null, milestone: number|null, task: number|null, person: number|null, team: number|null, log: number|null},
  *             open: (key: string, id: number) => void, close: (key: string) => void }}
  */
 export function usePanelParams() {

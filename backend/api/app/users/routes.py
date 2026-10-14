@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from app.core.deps import CurrentUser, require_roles
 from app.db.connection import get_db
 from app.users import service
-from app.users.schemas import PeopleSearch, UserCreate, UserDetail, UserFormOptions, UserPage, UserPublic, UserRow, UserUpdate
+from app.users.schemas import MeUpdate, PeopleSearch, UserCreate, UserDetail, UserFormOptions, UserPage, UserPublic, UserRow, UserUpdate
 
 router = APIRouter(tags=["users"])
 
@@ -17,6 +17,12 @@ router = APIRouter(tags=["users"])
 def read_me(user: CurrentUser) -> UserPublic:
     """Return the profile of the user identified by the token."""
     return UserPublic(**user)
+
+
+@router.patch("/me", response_model=UserPublic)
+def update_me(data: MeUpdate, user: CurrentUser, db: psycopg.Connection = Depends(get_db)) -> UserPublic:
+    """Change your own first name, last name or email (Settings). Nothing else is self-service."""
+    return UserPublic(**service.update_me(db, user, data))
 
 
 # --- Admin: People & access -------------------------------------------------------------------

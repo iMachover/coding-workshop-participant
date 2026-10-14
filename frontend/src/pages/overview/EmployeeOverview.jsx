@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
@@ -12,6 +13,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import AccessTimeOutlined from '@mui/icons-material/AccessTimeOutlined';
+import AddOutlined from '@mui/icons-material/AddOutlined';
 import ChecklistOutlined from '@mui/icons-material/ChecklistOutlined';
 import FolderOutlined from '@mui/icons-material/FolderOutlined';
 import PaidOutlined from '@mui/icons-material/PaidOutlined';
@@ -32,10 +34,11 @@ import { daysUntil, formatCount, formatDay, formatHours, formatMoney, formatToda
 
 /**
  * Employee Overview (EMPLOYEE.md §6.2): stat cards, active milestone, open tasks, hours.
- * Data: GET /me/overview. Log hours arrives with the My hours slice.
+ * Data: GET /me/overview. Log hours opens the shared panel (`?log=0`).
  */
 export function EmployeeOverview() {
   const { data, error, retry } = useApiGet('/me/overview');
+  const { open } = usePanelParams();
 
   return (
     <>
@@ -43,6 +46,11 @@ export function EmployeeOverview() {
         eyebrow={`My workspace · ${formatToday()}`}
         title="Overview"
         subtitle="Your projects, tasks and hours this week."
+        actions={
+          <Button variant="contained" startIcon={<AddOutlined />} onClick={() => open('log', 0)}>
+            Log hours
+          </Button>
+        }
       />
       {data ? <Content data={data} /> : <LoadState error={error} onRetry={retry} />}
     </>

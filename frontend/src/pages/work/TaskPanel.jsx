@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import AccessTimeOutlined from '@mui/icons-material/AccessTimeOutlined';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
 import CheckOutlined from '@mui/icons-material/CheckOutlined';
 import LockOutlined from '@mui/icons-material/LockOutlined';
@@ -11,13 +12,14 @@ import { useAuth } from '../../context/useAuth';
 import { useRefresh } from '../../context/useRefresh';
 import { useToast } from '../../context/useToast';
 import { useApiGet } from '../../hooks/useApiGet';
+import { usePanelParams } from '../../hooks/usePanelParams';
 import { TASK_STATUS } from '../../config/statuses';
 import { LoadState } from '../../components/LoadState';
 import { SidePanel } from '../../components/SidePanel';
 import { StatusChip } from '../../components/StatusChip';
 import { completeTask, reopenTask, updateTaskStatus } from '../../services/workService';
 import { monoFont } from '../../theme';
-import { formatDate, formatHours, formatMoney, formatWhen } from '../../utils/format';
+import { formatDate, formatDay, formatHours, formatMoney, formatWhen } from '../../utils/format';
 
 /**
  * One task (prototype "Your task details" / "Review completion request" drawers).
@@ -31,8 +33,11 @@ export function TaskPanel({ taskId, onClose }) {
   const { bump } = useRefresh();
   const showToast = useToast();
   const [busy, setBusy] = useState(false);
+  const { open } = usePanelParams();
   const { data, error, loading, retry } = useApiGet(taskId ? `/tasks/${taskId}` : null);
   const task = loading ? null : data;
+  const { data: entries } = useApiGet(taskId ? `/tasks/${taskId}/time-entries` : null);
+  const canLog = user.role === 'employee' && task?.assignee_id === user.id && (task?.status === 'in_progress' || task?.status === 'submitted');
 
   async function act(fn, message) {
     setBusy(true);
@@ -97,6 +102,36 @@ export function TaskPanel({ taskId, onClose }) {
                 </Box>
               ))}
             </>
+          )}
+
+          <Typography variant="h3" sx={{ mt: 2.5, mb: 1 }}>
+            {user.role === 'employee' ? 'Your logged hours' : 'Logged hours'}
+          </Typography>
+          {!entries?.length && (
+            <Typography sx={{ fontSize: 12 }} color="text.secondary">
+              {canLog ? 'Nothing logged yet. Record the time after the work.' : 'No hours logged on this task.'}
+            </Typography>
+          )}
+          {entries?.map((e) => (
+            <Box key={e.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.75, borderBottom: 1, borderColor: 'divider', fontSize: 12 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <span>{formatDay(e.work_date)}</span>
+                {user.role !== 'employee' && <span style={{ color: '#617578' }}> · {e.user_name}</span>}
+                {e.note && (
+                  <Typography color="text.secondary" sx={{ fontSize: 10 }} noWrap>
+                    {e.note}
+                  </Typography>
+                )}
+              </Box>
+              <Typography sx={{ fontFamily: monoFont, fontSize: 11, whiteSpace: 'nowrap' }}>
+                {formatHours(e.hours)} · {formatMoney(e.cost)}
+              </Typography>
+            </Box>
+          ))}
+          {canLog && (
+            <Button size="small" startIcon={<AccessTimeOutlined />} onClick={() => open('log', task.id)} sx={{ mt: 1 }}>
+              Log hours on this task
+            </Button>
           )}
 
           <Box sx={{ mt: 2.5, p: 1.75, bgcolor: '#eff3e5', color: '#4c6954', borderRadius: '5px', fontSize: 12 }}>

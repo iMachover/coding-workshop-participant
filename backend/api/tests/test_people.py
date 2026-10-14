@@ -393,7 +393,14 @@ def test_team_options_and_people_search(client, ids):
     assert people["Sam Rivera"]["manager_id"] == ids["mgr001"]
     assert people["Alex Kim"]["manager_id"] is None
     assert [p["name"] for p in client.get("/employees/search?q=alex", headers=manager).json()["items"]] == ["Alex Kim"]
-    assert [p["name"] for p in client.get("/employees/search?job_title=Storage%20Engineer", headers=manager).json()["items"]] == ["Alex Kim"]
+    # Exact job title filter, still within the manager's own and unassigned people (earlier tests
+    # in this module add Storage Engineers under this manager, so more than Alex may match).
+    storage = client.get("/employees/search?job_title=Storage%20Engineer", headers=manager).json()["items"]
+    assert "Alex Kim" in [p["name"] for p in storage]
+    assert all(p["job_title"] == "Storage Engineer" and p["manager_id"] in (None, ids["mgr001"]) for p in storage)
+    # Casey Nguyen is the only Inventory Analyst and reports to the other manager: never offered, nor their title.
+    assert client.get("/employees/search?job_title=Inventory%20Analyst", headers=manager).json() == {"items": [], "total": 0, "limit": 25}
+    assert "Inventory Analyst" not in options["job_titles"]
     on_team = {p["name"] for p in client.get(f"/employees/search?exclude_team_id={ids['server_ops']}", headers=manager).json()["items"]}
     assert "Sam Rivera" not in on_team and "Alex Kim" in on_team
     assert client.get("/employees/search", headers=_auth(client, SEED_EMPLOYEE)).status_code == 403

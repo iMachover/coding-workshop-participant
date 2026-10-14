@@ -38,9 +38,11 @@ test('manager creates a team on a project, then detaches it', async ({ page }) =
   await expect(page.getByRole('heading', { level: 1, name: 'My team' })).toBeVisible();
   await page.getByRole('button', { name: 'Create team' }).click();
   await panel(page).getByLabel('Team name').fill(name);
-  await panel(page).getByLabel('Members').click();
-  await page.getByRole('option', { name: /Jordan Okafor/ }).click();
-  await page.keyboard.press('Escape');
+  // The people picker lists the manager's own and unassigned employees; pick one of each.
+  const members = panel(page).getByRole('list', { name: 'Members' });
+  await members.getByRole('checkbox', { name: /Jordan Okafor/ }).click();
+  await expect(members.getByRole('checkbox', { name: /Jordan Okafor/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel(page).getByRole('button', { name: 'Jordan Okafor', exact: true })).toBeVisible(); // the picked chip
   await panel(page).getByLabel('Assigned project').click();
   await page.getByRole('option', { name: /INF-024/ }).click();
   await panel(page).getByRole('button', { name: 'Create team' }).click();
@@ -48,6 +50,7 @@ test('manager creates a team on a project, then detaches it', async ({ page }) =
 
   const card = page.getByText(name, { exact: true }).locator('..');
   await expect(card.getByText(/INF-024/)).toBeVisible();
+  await expect(card.getByText(/Jordan Okafor/)).toBeVisible();
   await card.locator('..').getByRole('button', { name: 'Manage team' }).click();
   await expect(panel(page).getByRole('heading', { name: new RegExp(name) })).toBeVisible();
   await panel(page).getByLabel('Detach INF-024').click();
@@ -64,28 +67,44 @@ test('manager takes an unassigned employee on from the employee list, then relea
   await signIn(page, USERS.manager);
   await page.getByRole('link', { name: 'My team' }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'My team' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Direct reports' })).toBeVisible();
-  await expect(page.getByRole('row', { name: /Alex Kim/ })).toHaveCount(0); // seeded unassigned
+  const reports = page.getByRole('region', { name: 'Direct reports' });
+  await expect(reports).toBeVisible();
+  await expect(reports.getByRole('row').first()).toBeVisible();
+  if (await reports.getByRole('row', { name: /Alex Kim/ }).count()) {
+    await releaseAlex(page); // a previous run stopped before releasing them; start from the seed
+  }
+  await expect(reports.getByRole('row', { name: /Alex Kim/ })).toHaveCount(0); // seeded unassigned
 
   await page.getByRole('button', { name: 'Assign employee' }).click();
-  await panel(page).getByLabel('Employee').click();
-  await expect(page.getByRole('option', { name: /Casey Nguyen/ })).toHaveAttribute('aria-disabled', 'true'); // another manager's
-  await page.getByRole('option', { name: /Alex Kim/ }).click();
-  await panel(page).getByLabel('Team').click();
+  await panel(page).getByRole('combobox', { name: 'Team' }).click();
   await page.getByRole('option', { name: 'No team yet' }).click();
+  // The picker offers only the manager's own and unassigned employees; another manager's never appear.
+  const picker = panel(page).getByRole('list', { name: 'Employee' });
+  const alex = picker.getByRole('option', { name: /Alex Kim/ });
+  await expect(alex).toBeVisible();
+  await expect(alex).toContainText('Unassigned');
+  await expect(picker.getByRole('option', { name: /Sam Rivera/ })).toContainText('Reports to you');
+  await expect(picker.getByRole('option', { name: /Casey Nguyen/ })).toHaveCount(0);
+  await alex.click();
+  await expect(panel(page).getByText('Alex Kim becomes your direct report.')).toBeVisible();
   await panel(page).getByRole('button', { name: 'Add as direct report' }).click();
   await expectToast(page, 'now reports to you');
 
-  const row = page.getByRole('row', { name: /Alex Kim/ });
-  await expect(row).toBeVisible();
+  await expect(reports.getByRole('row', { name: /Alex Kim/ })).toBeVisible();
+  await releaseAlex(page);
+  await expect(reports.getByRole('row', { name: /Alex Kim/ })).toHaveCount(0);
+});
+
+/** From the My team page: open Alex Kim's profile and release them back to the unassigned pool. */
+async function releaseAlex(page) {
+  const row = page.getByRole('region', { name: 'Direct reports' }).getByRole('row', { name: /Alex Kim/ });
   await row.getByRole('button', { name: 'View profile' }).click();
   await expect(panel(page).getByText('Morgan Lee')).toBeVisible(); // Reports to
   await panel(page).getByRole('button', { name: 'Release from your reports' }).click();
   await expect(panel(page).getByRole('group', { name: 'Confirm release' })).toBeVisible();
   await panel(page).getByRole('button', { name: 'Confirm release' }).click();
   await expectToast(page, 'released');
-  await expect(page.getByRole('row', { name: /Alex Kim/ })).toHaveCount(0);
-});
+}
 
 test('employee sees their team, its current milestone and their manager', async ({ page }) => {
   await signIn(page, { username: 'emp001', password: 'Employee123!' }); // seeded with work in progress

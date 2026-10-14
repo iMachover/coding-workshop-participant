@@ -12,18 +12,28 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OverviewPage } from './pages/overview/OverviewPage';
+import { ArchivesPage } from './pages/archives/ArchivesPage';
+import { AuditPage } from './pages/audit/AuditPage';
+import { HoursPage } from './pages/hours/HoursPage';
 import { PeoplePage } from './pages/people/PeoplePage';
 import { ProjectsPage } from './pages/projects/ProjectsPage';
+import { ReportsPage } from './pages/reports/ReportsPage';
+import { SettingsPage } from './pages/settings/SettingsPage';
 import { TeamManagerPage } from './pages/team/TeamManagerPage';
 import { TeamsEmployeePage } from './pages/teams/TeamsEmployeePage';
 
-/** Pages built so far, by path. Every other sidebar path shows the placeholder. */
+/** Every sidebar page, by path. (The placeholder stays for any path added later.) */
 const BUILT_PAGES = {
   '/': OverviewPage,
   '/projects': ProjectsPage,
   '/people': PeoplePage,
   '/team': TeamManagerPage,
   '/teams': TeamsEmployeePage,
+  '/hours': HoursPage,
+  '/audit': AuditPage,
+  '/archives': ArchivesPage,
+  '/reports': ReportsPage,
+  '/settings': SettingsPage,
 };
 
 /**

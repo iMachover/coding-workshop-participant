@@ -1,11 +1,12 @@
 import { usePanelParams } from '../../hooks/usePanelParams';
+import { LogHoursPanel } from '../hours/LogHoursPanel';
 import { PersonPanel } from '../people/PersonPanel';
 import { ProjectPanel } from '../projects/ProjectPanel';
 import { MilestonePanel } from './MilestonePanel';
 import { TaskPanel } from './TaskPanel';
 
 /**
- * The side panels (project → milestone → task, plus the person profile), mounted once in
+ * The side panels (project → milestone → task, the person profile and Log hours), mounted once in
  * the app shell and driven by the URL, so any page can open one with a link like `?task=12`.
  */
 export function WorkPanels() {
@@ -16,6 +17,7 @@ export function WorkPanels() {
       <MilestonePanel milestoneId={ids.milestone} onClose={() => close('milestone')} onOpenTask={(id) => open('task', id)} />
       <TaskPanel taskId={ids.task} onClose={() => close('task')} />
       <PersonPanel personId={ids.person} onClose={() => close('person')} onOpenProject={(id) => open('selected', id)} />
+      <LogHoursPanel taskId={ids.log} onClose={() => close('log')} />
     </>
   );
 }

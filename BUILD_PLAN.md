@@ -125,7 +125,7 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
       employee submits a task, manager approves and reopens it, admin creates and archives a project
 - [x] Docs: READMEs, TESTING.md, this file
 - [x] Attach teams so new projects can get tasks: done in slice 4
-- [ ] Deferred to slice 5: "Log hours" button
+- [x] "Log hours" button: done in slice 5
 - [x] Owner reviewed and committed 2026-10-14 (1976269)
 
 ### Slice 4: People, My team, My teams
@@ -160,23 +160,64 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 - [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 5: My hours (employee)
-- [ ] `GET/POST/PATCH /me/time-entries` (no more than 24 h per entry, own tasks only), CSV export
-- [ ] pytest, Postman, page, docs
+- [x] API (`app/hours/`): `GET /me/time-entries?from&to` (default this week; week totals, available hours,
+      loggable tasks), `POST /tasks/{id}/time-entries` (own task in progress or submitted; 0 < hours ≤ 24
+      and ≤ 24 h per day; no future dates; 409 on assigned / completed tasks or closed projects),
+      `PATCH` / `DELETE /time-entries/{id}` (own, task not completed), `GET /tasks/{id}/time-entries`
+      (employee own, manager all on own projects, admin all). Audit: `logged_hours`, `updated`, `deleted`.
+- [x] Page `/hours`: stat cards, one-week ledger with previous / next / this week, search, View / correct
+      panel (save correction, remove with confirmation), Export CSV of the week shown
+- [x] Log hours panel mounted in the shell (`?log=<task>` or `?log=0`): opened from the Overview's
+      [Log hours] (deferred from slice 3), My hours, and "Log hours on this task" in the task panel, which
+      now lists the logged hours (own for employees, everyone's for the manager)
+- [x] Browser check (1440px and 390px, no console errors)
+- [x] pytest: 28 tests (`test_hours.py`); Postman "Hours" folder (26 requests); Playwright flow (log, correct, remove)
+- [x] Docs: READMEs, TESTING.md, this file
+- [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 6: Audit and Archives (admin)
-- [ ] `GET /audit`, `GET /archives`, restore projects and users
-- [ ] pytest, Postman, pages, Playwright, docs
+- [x] API (`app/audit/`, read-only): `GET /audit` (search actor / code / summary; action, entity, actor and
+      date filters; pagination; filter values in the envelope), `GET /audit/{id}` (details plus a per-field
+      before / after diff), `GET /archives` (projects and users together, archived date and actor from the
+      audit log, type filter, search, pagination). Restore reuses the project and user restore routes.
+- [x] Pages: Audit activity (`/audit`) with the event details panel; Archives (`/archives`) with Restore
+      record behind a confirmation panel; rows open the project or person panel
+- [x] Browser check (1440px and 390px, no console errors)
+- [x] pytest: 14 tests (`test_audit.py`); Postman "Audit and archives" folder (29 requests); Playwright flow (filter, view change, restore)
+- [x] Docs: READMEs, TESTING.md, this file
+- [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 7: Reports (manager)
-- [ ] `GET /manager/reports`, CSV export
-- [ ] pytest, Postman, page, docs
+- [x] `GET /manager/reports` (`app/reports/`): totals, hours and cost per project, weekly labour cost for the
+      last 5 weeks, over-allocated direct reports, planning note (at risk first, then budget use furthest
+      ahead of delivery, among projects with tasks)
+- [x] Page `/reports`: stat cards, Hours by project (rows open the project panel), Weekly resource cost bar
+      chart, Planning note card with Review projects; Export CSV of the project rows and the weekly series
+- [x] Browser check (1440px and 390px, no console errors)
+- [x] pytest: 11 tests (`test_reports.py`, figures cross-checked against /projects and /manager/overview); Postman "Reports" folder (5 requests); Playwright flow
+- [x] Docs: READMEs, TESTING.md, this file
+- [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 8: Settings (all roles)
-- [ ] `PATCH /me` (name and email only)
-- [ ] Notification checkboxes, labelled as not saved yet
-- [ ] pytest, Postman, page, docs
+- [x] `PATCH /me` (name and email only; email unique; audit row when changed); the signed-in user in the
+      shell updates at once
+- [x] Departments (`app/departments/`): `GET /departments` (all roles), `POST` and `PATCH` (admin; unique
+      name, three-letter upper-case prefix; existing project codes keep theirs; audit rows)
+- [x] Page `/settings`: Account card (name, email, role badge, Save), Notifications card labelled as not
+      saved, "Your access" side card per role, Departments card for admins (list, create, rename)
+- [x] Browser check (admin at 1440px, employee at 390px, no console errors)
+- [x] pytest: 44 tests (`test_settings.py`); Postman "Settings" folder (19 requests); Playwright flow (rename and back)
+- [x] Docs: READMEs, TESTING.md, this file
+- [x] Owner reviewed and committed 2026-10-14
 
 ## Blockers and decisions
+
+- **2026-10-14: Tests per slice run in a background agent** while the next slice is built (owner
+  request). Each agent writes the pytest file, Postman folder and Playwright flow for its slice and
+  reports app bugs back instead of fixing app code. Totals after slice 8: 250 pytest, 187 Postman
+  requests, 13 Playwright flows.
+- **2026-10-14: Slices 5 to 8 committed together.** Their routes and pages share the same wiring files
+  (`app/main.py`, `App.jsx`), so one commit keeps every intermediate state importable.
 
 - **2026-10-13: Material UI over the prototype's CSS.** The workshop requires MUI, so it wins
   over the Replit handoff note.

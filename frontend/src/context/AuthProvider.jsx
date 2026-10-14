@@ -60,7 +60,10 @@ export function AuthProvider({ children }) {
     };
   }, [status, logout]);
 
-  const value = useMemo(() => ({ status, user, login, logout }), [status, user, login, logout]);
+  // Settings saves the person's own name or email; the sidebar and headers follow at once.
+  const updateUser = useCallback((me) => setUser((current) => ({ ...current, ...me })), []);
+
+  const value = useMemo(() => ({ status, user, login, logout, updateUser }), [status, user, login, logout, updateUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

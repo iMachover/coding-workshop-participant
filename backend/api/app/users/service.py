@@ -29,6 +29,7 @@ from app.users import repository as repo
 from app.users.schemas import (
     DepartmentOption,
     ManagerOption,
+    MeUpdate,
     PeopleSearch,
     PickablePerson,
     RoleCounts,
@@ -451,3 +452,30 @@ def set_archived(conn: psycopg.Connection, admin: dict[str, Any], user_id: int, 
         details={"before": {"is_archived": not archived}, "after": {"is_archived": archived}},
     )
     return get_user(conn, admin, user_id)
+
+
+def update_me(conn: psycopg.Connection, user: dict[str, Any], data: MeUpdate) -> dict[str, Any]:
+    """Anyone changes their own first name, last name or email. Returns the fresh user row."""
+    fields = data.model_dump(exclude_unset=True)
+    for name in ("first_name", "last_name"):
+        if name in fields:
+            fields[name] = (fields[name] or "").strip()
+            if not fields[name]:
+                raise _validation({name: "Name is required"})
+    if "email" in fields:
+        fields["email"] = _clean_email(conn, fields["email"], exclude_id=user["id"])
+    before = {k: user[k] for k in fields}
+    repo.update(conn, user["id"], fields)
+    diff = audit.changes(before, fields)
+    if diff["after"]:
+        audit.record(
+            conn,
+            actor_id=user["id"],
+            action="updated",
+            entity_type="user",
+            entity_id=user["id"],
+            entity_code=f"USR-{user['id']:03d}",
+            summary=f"Updated own profile ({', '.join(diff['after'])})",
+            details=diff,
+        )
+    return repo.find_by_id(conn, user["id"])

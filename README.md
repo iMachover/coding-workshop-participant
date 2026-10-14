@@ -23,8 +23,10 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | People & access (admin): create accounts, edit, role change, archive and restore | Done (slice 4) |
 | My team (manager): take employees on from the employee list, release them, teams (searchable, filtered by project), members, attach teams to projects | Done (slice 4) |
 | My teams (employee): team table with state and health filters, team panel with manager, milestones and teammates | Done (slice 4) |
-| My hours (employee) | Next (slice 5, [EMPLOYEE.md](EMPLOYEE.md)) |
-| Audit activity, Archives (admin); Reports (manager); Settings (all) | Later (slices 6 to 8) |
+| My hours (employee): log, correct and remove time entries, weekly ledger, CSV export | Done (slice 5) |
+| Audit activity and Archives (admin): searchable, filtered audit log with before / after; restore archived projects and accounts | Done (slice 6) |
+| Reports (manager): totals, hours by project, weekly labour cost, over-allocated people, CSV export | Done (slice 7) |
+| Settings (all roles): own name and email; departments (admin) | Done (slice 8) |
 | Deployed and checked on LocalStack / AWS | Not yet |
 
 ### API endpoints so far
@@ -49,6 +51,17 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | POST, DELETE | `/teams/{id}/members/{user_id}` | manager: add a member (an unassigned employee becomes a direct report; 400 if another manager's) or remove one |
 | POST, DELETE | `/projects/{id}/teams/{team_id}` | manager: attach or detach one of their teams to one of their projects |
 | GET | `/me/teams` | employee: teams, each project's current milestone, own and teammates' progress |
+| GET | `/me/time-entries?from&to` | employee: ledger for a date range (default this week) with week totals and the tasks hours can go on |
+| GET | `/tasks/{id}/time-entries` | employee: own entries on own task; manager: every entry on a task of their projects; admin: all |
+| POST | `/tasks/{id}/time-entries` | employee: `{work_date, hours, note?}` on an own task in progress or submitted; ≤ 24 h per entry and per day, no future dates |
+| PATCH, DELETE | `/time-entries/{id}` | employee: correct or remove an own entry while the task is not completed |
+| GET | `/audit?q&action&entity_type&actor_id&from&to&page&limit` | admin: the audit log, newest first, with the filter values |
+| GET | `/audit/{id}` | admin: one entry with its before / after fields |
+| GET | `/archives?q&type&page&limit` | admin: archived projects and users together; restore with the project and user restore routes |
+| GET | `/manager/reports` | manager: totals across own projects, hours and cost per project, weekly labour cost for 5 weeks, over-allocated reports, planning note |
+| PATCH | `/me` | any signed-in user: own first name, last name, email |
+| GET | `/departments` | any signed-in user |
+| POST, PATCH | `/departments`, `/departments/{id}` | admin: create, rename, change the 3-letter prefix |
 | GET | `/me/overview` | employee |
 | GET | `/manager/overview?project_id=` | manager |
 | GET | `/admin/overview` | admin |
@@ -96,6 +109,11 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 │       │   ├── overview/          # Overview page, one version per role
 │       │   ├── projects/          # Projects page, project side panel, create/edit form
 │       │   ├── work/              # Milestone and task side panels, mounted once in the shell
+│       │   ├── hours/             # My hours (employee), Log hours panel (in the shell), entry correction panel
+│       │   ├── audit/             # Audit activity (admin) with the event details panel
+│       │   ├── archives/          # Archives (admin) with restore confirmation
+│       │   ├── reports/           # Reports (manager) with the weekly cost chart
+│       │   └── settings/          # Settings (all roles) and the admin's Departments card
 │       │   ├── people/            # People & access (admin), person profile panel, person form, credentials dialog
 │       │   ├── team/              # My team (manager) and its team panel
 │       │   └── teams/             # My teams (employee)
@@ -104,7 +122,7 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 │       ├── hooks/                 # useApiGet (load one API path), usePanelParams (side panels in the URL)
 │       ├── utils/format.js        # Money, hours and date formatting
 │       ├── context/               # AuthProvider (signed-in user, login, logout), ToastProvider, RefreshProvider
-│       └── services/              # API client, auth calls, project, workflow and people/team writes
+│       └── services/              # API client, auth calls, project, workflow, people/team, hours and settings writes
 ├── infra/                 # Terraform
 ├── bin/                   # Start, deploy and setup scripts
 └── docs/                  # Workshop guides
@@ -160,7 +178,7 @@ Three roles, enforced in two places:
 ## Tests and checks
 
 ```sh
-cd backend/api && .venv/bin/python -m pytest   # 150 tests, needs PostgreSQL (see backend README)
+cd backend/api && .venv/bin/python -m pytest   # 250 tests, needs PostgreSQL (see backend README)
 cd frontend && npm run lint && npm run build
 cd frontend && npm run test:e2e                # Playwright, needs the dev stack running (see frontend/e2e/README.md)
 ```

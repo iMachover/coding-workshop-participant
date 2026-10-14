@@ -42,7 +42,7 @@ POSTGRES_USER=$USER POSTGRES_PASS= .venv/bin/python -m pytest
 **Expected result**
 
 ```text
-153 passed
+250 passed
 ```
 
 If any test fails, the output shows which one and why.
@@ -58,10 +58,14 @@ Most tests run against the real test database.
 | `tests/test_roles.py` | 5 | Role checks, for example only an admin can list users. |
 | `tests/test_schema.py` | 9 | Database rules: an end date can't be before the start date, a project needs a manager, hours must be positive, deletes cascade or are blocked as intended. |
 | `tests/test_seed.py` | 8 | The sample data is consistent. Seeding again adds nothing, and audit entries point at records that exist. |
-| `tests/test_overview.py` | 28 | The three Overview pages: project health rules, cost = hours × rate, people over 40 hours flagged, and what each role can see. |
-| `tests/test_projects.py` | 23 | The Projects API: what each role can see, admin-only create, archive and restore, manager edit limits, validation, and audit entries. |
+| `tests/test_overview.py` | 36 | The three Overview pages: project health rules, cost = hours × rate, people over 40 hours flagged, and what each role can see. |
+| `tests/test_projects.py` | 25 | The Projects API: what each role can see, admin-only create, archive and restore, manager edit limits, validation, and audit entries. |
 | `tests/test_work.py` | 16 | Tasks and milestones: forward-only status, one active milestone, review, approval, notes, close project. |
 | `tests/test_people.py` | 28 | People and teams: paginated people list, create with generated username (employees start unassigned), validation, role-change and archive blockers, last-admin rule, manager's direct reports, taking an unassigned employee on and releasing them (directly or through a team), teams (create, rename, members, attach and detach), employee My teams. Cleans up what it creates. |
+| `tests/test_hours.py` | 28 | My hours: the week's ledger and explicit ranges, logging hours only on own tasks in progress or submitted (no future dates, 0 < hours ≤ 24, at most 24 h a day), corrections (no audit row when nothing changed), removals, the `editable` flag, who reads a task's entries. Cleans up what it creates. |
+| `tests/test_audit.py` | 14 | Audit activity and Archives (admin only): the log newest first, pagination, search on summary, record code or actor, action / record type / actor / date filters (end before start is a 400), the filter values, the before / after diff of an update, unknown entry, archived projects and users together with who archived them, type filter and search, and a restored record leaving the list. Cleans up what it creates. |
+| `tests/test_reports.py` | 11 | Manager reports: manager only, totals and per-project figures equal to the Projects list and the Overview, the five-week labour cost series (Monday starts, ending this week, hours × rate checked against the database), over-allocated people once someone passes 40 h, and the planning note (the project with tasks, null for a manager without projects). Cleans up what it creates. |
+| `tests/test_settings.py` | 44 | Settings: anyone changes their own name and email through `PATCH /me` (trimmed, email lower-cased and unique, blank names and bad emails rejected, no audit row without a change, 401 without a token); departments listed by every role with people and active project counts, admin-only create and rename (three-letter prefix upper-cased and unique, names unique ignoring case, 403 for others, 404 unknown, audit before / after), and a project created in a new department getting its prefix. Cleans up what it creates. |
 | `tests/test_lambda_handler.py` | 5 | The Lambda entry point strips the CloudFront path prefix. |
 
 **Common errors**
@@ -105,10 +109,12 @@ Run the `export` line and both commands in the same terminal window. The API wil
 
 **Expected result**
 
-108 requests. Every test passes.
+187 requests. Every test passes.
 
 The collection creates and archives a project, creates a person (archived and restored) and a
-team. If a second run gives different results, reset the local database and run again.
+team, logs, corrects and removes a time entry, and archives and restores a second project while
+reading the audit log and the archives, and creates and renames a department ("Postman dept <timestamp>" with a
+prefix derived from the clock, so reruns do not collide). If a second run gives different results, reset the local database and run again.
 
 **Test logins**
 

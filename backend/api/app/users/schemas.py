@@ -40,6 +40,14 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class MeUpdate(BaseModel):
+    """PATCH /me: the only account fields a person edits themselves (EMPLOYEE.md §6.6)."""
+
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, min_length=1, max_length=100)
+    email: str | None = Field(default=None, min_length=3, max_length=200)
+
+
 class UserUpdate(BaseModel):
     """Fields a PATCH may change. Admin: any of them. Manager: name and email of a direct report."""
 

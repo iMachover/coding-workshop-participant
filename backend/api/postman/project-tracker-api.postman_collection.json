@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Project Tracker API",
-    "description": "Authentication, Overview, Projects, Tasks and milestones, People and teams. Run the whole collection in order: each folder logs in the roles it needs and stores ids in collection variables.",
+    "description": "Authentication, Overview, Projects, Tasks and milestones, People and teams, Hours, Audit and archives, Settings. Run the whole collection in order: each folder logs in the roles it needs and stores ids in collection variables.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -72,6 +72,54 @@
     },
     {
       "key": "teamId",
+      "value": ""
+    },
+    {
+      "key": "otherManagerToken",
+      "value": ""
+    },
+    {
+      "key": "loggableTaskId",
+      "value": ""
+    },
+    {
+      "key": "hoursAssignedTaskId",
+      "value": ""
+    },
+    {
+      "key": "workDate",
+      "value": ""
+    },
+    {
+      "key": "timeEntryId",
+      "value": ""
+    },
+    {
+      "key": "auditActorId",
+      "value": ""
+    },
+    {
+      "key": "auditProjectId",
+      "value": ""
+    },
+    {
+      "key": "auditProjectCode",
+      "value": ""
+    },
+    {
+      "key": "auditEntryId",
+      "value": ""
+    },
+    {
+      "key": "newDepartmentId",
+      "value": ""
+    },
+    {
+      "key": "newDepartmentName",
+      "value": ""
+    },
+    {
+      "key": "newDepartmentPrefix",
       "value": ""
     }
   ],
@@ -3018,6 +3066,2237 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hours",
+      "description": "My hours (EMPLOYEE.md sections 2 and 7): the week's ledger, logging hours after the work, corrections and removals, who reads a task's entries.",
+      "item": [
+        {
+          "name": "Login as employee (emp001)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emp001\",\n  \"password\": \"Employee123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as manager (mgr001)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mgr001\",\n  \"password\": \"Manager123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('managerToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as other manager (mgr002)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mgr002\",\n  \"password\": \"Manager123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('otherManagerToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as admin (adm001)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"adm001\",\n  \"password\": \"Admin123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - this week",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('range is this week', () => { const b = pm.response.json(); pm.expect(b.range_start).to.eql(b.week.start); pm.expect(b.range_end).to.eql(b.week.end); });",
+                  "pm.test('has a task to log on', () => pm.expect(pm.response.json().loggable_tasks.length).to.be.above(0));",
+                  "pm.collectionVariables.set('loggableTaskId', pm.response.json().loggable_tasks[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - explicit range",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries?from=2026-09-01&to=2026-09-30",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('range as asked', () => { const b = pm.response.json(); pm.expect(b.range_start).to.eql('2026-09-01'); pm.expect(b.range_end).to.eql('2026-09-30'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - end before start - 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries?from=2026-09-30&to=2026-09-01",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the field', () => pm.expect(pm.response.json().error.fields).to.have.property('to'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - range over 92 days - 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries?from=2026-01-01&to=2026-12-31",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - manager token - 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - no token - 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee overview - find an assigned task",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/overview",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('hoursAssignedTaskId', pm.response.json().tasks.find(t => t.display_status === 'assigned').id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task entries - employee, own task",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('only my entries', () => pm.expect(pm.response.json().every(e => e.user_name === 'Sam Rivera')).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"{{workDate}}\",\n  \"hours\": 2,\n  \"note\": \"Postman check\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = new Date(); pm.collectionVariables.set('workDate', new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('entry as sent', () => { const e = pm.response.json(); pm.expect(e.hours).to.eql(2); pm.expect(e.note).to.eql('Postman check'); pm.expect(e.editable).to.be.true; });",
+                  "pm.collectionVariables.set('timeEntryId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours - assigned task - 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{hoursAssignedTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"{{workDate}}\",\n  \"hours\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours - future date - 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"2099-01-01\",\n  \"hours\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the field', () => pm.expect(pm.response.json().error.fields).to.have.property('work_date'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours - zero hours - 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"{{workDate}}\",\n  \"hours\": 0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the field', () => pm.expect(pm.response.json().error.fields).to.have.property('hours'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours - over 24 h in a day - 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"{{workDate}}\",\n  \"hours\": 23\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the field', () => pm.expect(pm.response.json().error.fields).to.have.property('hours'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log hours - manager token - 403",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_date\": \"{{workDate}}\",\n  \"hours\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Correct entry",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/time-entries/{{timeEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 3,\n  \"note\": \"Postman check, corrected\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('corrected', () => { const e = pm.response.json(); pm.expect(e.hours).to.eql(3); pm.expect(e.note).to.eql('Postman check, corrected'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Correct entry - manager token - 403",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/time-entries/{{timeEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task entries - manager of the project",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('sees the new entry, read only', () => { const e = pm.response.json().find(e => String(e.id) === String(pm.collectionVariables.get('timeEntryId'))); pm.expect(e).to.exist; pm.expect(e.editable).to.be.false; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task entries - other manager - 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherManagerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task entries - admin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks/{{loggableTaskId}}/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove entry",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/time-entries/{{timeEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove entry again - 404",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/time-entries/{{timeEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hours - entry is gone",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me/time-entries",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('removed', () => pm.expect(pm.response.json().entries.some(e => String(e.id) === String(pm.collectionVariables.get('timeEntryId')))).to.be.false);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Audit and archives",
+      "description": "Admin only (ADMIN.md sections 6.4 and 6.5): the audit log with search, filters, dates and the before / after detail, and the archived projects and users with restore.",
+      "item": [
+        {
+          "name": "Login as admin (adm001)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"adm001\",\n  \"password\": \"Admin123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as manager (mgr001)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mgr001\",\n  \"password\": \"Manager123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('managerToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - admin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('paginated', () => { const b = pm.response.json(); pm.expect(b.page).to.eql(1); pm.expect(b.limit).to.eql(25); pm.expect(b.total).to.be.at.least(9); });",
+                  "pm.test('newest first', () => { const t = pm.response.json().items.map(e => e.created_at); pm.expect(t).to.eql([...t].sort().reverse()); });",
+                  "pm.test('row shape', () => { const e = pm.response.json().items[0]; ['id', 'created_at', 'actor_id', 'actor_name', 'actor_role', 'action', 'entity_type', 'entity_id', 'summary'].forEach(k => pm.expect(e).to.have.property(k)); });",
+                  "pm.test('filter values', () => { const b = pm.response.json(); pm.expect(b.actions).to.include('created'); pm.expect(b.entity_types).to.include('project'); pm.expect(b.actors.map(a => a.name)).to.include('Ada Admin'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - manager token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - no token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - page 2 of 3 per page",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?page=2&limit=3",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('page echoed', () => { const b = pm.response.json(); pm.expect(b.page).to.eql(2); pm.expect(b.limit).to.eql(3); pm.expect(b.items.length).to.be.at.most(3); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - limit too large",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?limit=101",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('limit field error', () => pm.expect(pm.response.json().error.fields).to.have.property('limit'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - filter by action",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?action=created",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('only created', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(4); b.items.forEach(e => pm.expect(e.action).to.eql('created')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - filter by record type",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?entity_type=task",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('only tasks', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(2); b.items.forEach(e => pm.expect(e.entity_type).to.eql('task')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - search by record code",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?q=inf-024",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the code', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(2); b.items.forEach(e => pm.expect(e.entity_code).to.eql('INF-024')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - search by actor",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?q=Morgan Lee",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the actor', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(3); b.items.forEach(e => pm.expect(e.actor_name).to.eql('Morgan Lee')); pm.collectionVariables.set('auditActorId', b.items[0].actor_id); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - filter by actor",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?actor_id={{auditActorId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('only that actor', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(3); b.items.forEach(e => pm.expect(String(e.actor_id)).to.eql(String(pm.collectionVariables.get('auditActorId')))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - date range",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?from=2020-01-01&to=2020-01-31",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('nothing that old', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - end date before start date",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?from=2026-10-10&to=2026-10-01",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('to field error', () => pm.expect(pm.response.json().error.fields).to.have.property('to'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create project to archive - admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman archive sample\",\n  \"description\": \"Archived and restored by the Audit and archives folder\",\n  \"department_id\": \"{{departmentId}}\",\n  \"manager_id\": \"{{managerId}}\",\n  \"start_date\": \"2026-11-01\",\n  \"end_date\": \"2027-02-28\",\n  \"budget\": 9000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('auditProjectId', pm.response.json().id);",
+                  "pm.collectionVariables.set('auditProjectCode', pm.response.json().code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update project budget - admin",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/projects/{{auditProjectId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"budget\": 9500\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Archive project - admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{auditProjectId}}/archive",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('archived', () => pm.expect(pm.response.json().is_archived).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - updated entry of the project",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?action=updated&q={{auditProjectCode}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('one update', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].summary).to.include('budget'); pm.collectionVariables.set('auditEntryId', b.items[0].id); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit entry detail - admin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit/{{auditEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('before and after', () => { const b = pm.response.json(); pm.expect(b.details.before.budget).to.eql(9000); pm.expect(b.details.after.budget).to.eql(9500); pm.expect(b.changes).to.deep.include({ field: 'budget', before: 9000, after: 9500 }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit entry detail - manager token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit/{{auditEntryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit entry detail - unknown id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit/999999",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - admin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('counts add up', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(b.projects + b.users); pm.expect(b.projects).to.be.at.least(1); });",
+                  "pm.test('contains the archived project', () => { const r = pm.response.json().items.find(i => i.type === 'project' && i.id === pm.collectionVariables.get('auditProjectId')); pm.expect(r).to.not.be.undefined; pm.expect(r.code).to.eql(pm.collectionVariables.get('auditProjectCode')); pm.expect(r.archived_by).to.eql('Ada Admin'); pm.expect(r.archived_at).to.be.a('string'); });",
+                  "pm.test('newest archive first', () => { const t = pm.response.json().items.map(r => r.archived_at); pm.expect(t).to.eql([...t].sort().reverse()); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - manager token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - projects only",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives?type=project",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('only projects', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(b.projects); b.items.forEach(r => pm.expect(r.type).to.eql('project')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - unknown type",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives?type=team",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('type field error', () => pm.expect(pm.response.json().error.fields).to.have.property('type'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - search by code",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives?q={{auditProjectCode}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('one match', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].id).to.eql(pm.collectionVariables.get('auditProjectId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restore project - admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{auditProjectId}}/restore",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('restored', () => pm.expect(pm.response.json().is_archived).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archives - restored project is gone",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/archives?q={{auditProjectCode}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('no match', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit - restore is logged",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit?action=restored&q={{auditProjectCode}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('one restore', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].summary).to.eql('Restored project Postman archive sample'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Login as manager (mgr001)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mgr001\",\n  \"password\": \"Manager123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('managerToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as employee (emp001)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emp001\",\n  \"password\": \"Employee123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manager reports",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/manager/reports",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('one active project, INF-024', () => pm.expect(body.projects.map(p => p.code)).to.eql(['INF-024']));",
+                  "pm.test('totals cover that project', () => pm.expect(body.totals.projects).to.eql(1));",
+                  "pm.test('totals match the project row', () => pm.expect(body.totals.actual_cost).to.eql(body.projects[0].actual_cost));",
+                  "pm.test('budget remaining = budget - actual cost', () => pm.expect(body.totals.budget_remaining).to.be.closeTo(body.totals.budget - body.totals.actual_cost, 0.01));",
+                  "pm.test('five weeks, Monday starts, ascending', () => {",
+                  "  pm.expect(body.weekly_cost).to.have.lengthOf(5);",
+                  "  const starts = body.weekly_cost.map(w => new Date(w.week_start + 'T00:00:00Z'));",
+                  "  starts.forEach(d => pm.expect(d.getUTCDay()).to.eql(1));",
+                  "  for (let i = 1; i < starts.length; i++) pm.expect(starts[i] - starts[i - 1]).to.eql(7 * 86400000);",
+                  "});",
+                  "pm.test('series ends with the current week', () => pm.expect(body.weekly_cost[4].week_start).to.eql(body.week.start));",
+                  "pm.test('this week has logged cost', () => pm.expect(body.weekly_cost[4].cost).to.be.above(0));",
+                  "pm.test('nobody over-allocated on the seed', () => pm.expect(body.over_allocated).to.eql([]));",
+                  "pm.test('planning note points at INF-024', () => pm.expect(body.attention.code).to.eql('INF-024'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manager reports - employee token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/manager/reports",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manager reports - no token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/manager/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('UNAUTHORIZED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Login as employee (emp001)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emp001\",\n  \"password\": \"Employee123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as manager (mgr001)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mgr001\",\n  \"password\": \"Manager123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('managerToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as admin (adm001)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"adm001\",\n  \"password\": \"Admin123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my profile - employee",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"last_name\": \"  Rivera-Postman \",\n  \"email\": \"SAM.RIVERA@acme.test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('name trimmed, email lower-cased', () => { pm.expect(body.last_name).to.eql('Rivera-Postman'); pm.expect(body.email).to.eql('sam.rivera@acme.test'); });",
+                  "pm.test('still the same account', () => { pm.expect(body.username).to.eql('emp001'); pm.expect(body.role).to.eql('employee'); });",
+                  "pm.test('never exposes password hash', () => pm.expect(body).to.not.have.property('password_hash'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me - shows the new name",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('profile saved', () => pm.expect(pm.response.json().last_name).to.eql('Rivera-Postman'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my profile - email taken",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"morgan.lee@acme.test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR on email', () => { const e = pm.response.json().error; pm.expect(e.code).to.eql('VALIDATION_ERROR'); pm.expect(e.fields).to.have.property('email'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my profile - blank name",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"   \"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR on first_name', () => pm.expect(pm.response.json().error.fields).to.have.property('first_name'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my profile - restore seed name",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"last_name\": \"Rivera\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('seed name is back', () => pm.expect(pm.response.json().last_name).to.eql('Rivera'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my profile - no token",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/me",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"last_name\": \"Nobody\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List departments - employee token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/departments",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json();",
+                  "pm.test('seeded departments with counts', () => { const inf = items.find(d => d.prefix === 'INF'); pm.expect(inf.name).to.eql('Infrastructure'); pm.expect(inf.people).to.be.above(0); pm.expect(items.map(d => d.prefix)).to.include('OPS'); });",
+                  "pm.test('every row has its fields', () => items.forEach(d => pm.expect(d).to.include.all.keys('id', 'name', 'prefix', 'next_project_seq', 'people', 'active_projects')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List departments - no token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/departments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create department - admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/departments",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{newDepartmentName}}\",\n  \"prefix\": \"{{newDepartmentPrefix}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh name and a P?? prefix derived from the clock, so reruns do not collide with earlier runs or the seed (INF, OPS).",
+                  "const seconds = Math.floor(Date.now() / 1000);",
+                  "const letter = (n) => String.fromCharCode(97 + (n % 26));",
+                  "pm.collectionVariables.set('newDepartmentName', 'Postman dept ' + seconds);",
+                  "pm.collectionVariables.set('newDepartmentPrefix', 'p' + letter(Math.floor(seconds / 26)) + letter(seconds));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('prefix upper-cased, counts at zero', () => { pm.expect(body.prefix).to.eql(pm.collectionVariables.get('newDepartmentPrefix').toUpperCase()); pm.expect(body.people).to.eql(0); pm.expect(body.active_projects).to.eql(0); pm.expect(body.next_project_seq).to.eql(1); });",
+                  "pm.collectionVariables.set('newDepartmentId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create department - manager token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/departments",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Not allowed\",\n  \"prefix\": \"NOP\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create department - name and prefix taken",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/departments",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"infrastructure\",\n  \"prefix\": \"INF\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR on name', () => { const e = pm.response.json().error; pm.expect(e.code).to.eql('VALIDATION_ERROR'); pm.expect(e.fields).to.have.property('name'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create department - bad prefix",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/departments",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Design\",\n  \"prefix\": \"D1S\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR on prefix', () => pm.expect(pm.response.json().error.fields).to.have.property('prefix'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename department - admin",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/departments/{{newDepartmentId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{newDepartmentName}} renamed\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('renamed, prefix kept', () => { const body = pm.response.json(); pm.expect(body.name).to.eql(pm.collectionVariables.get('newDepartmentName') + ' renamed'); pm.expect(body.prefix).to.eql(pm.collectionVariables.get('newDepartmentPrefix').toUpperCase()); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename department - prefix taken",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/departments/{{newDepartmentId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prefix\": \"OPS\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR on prefix', () => pm.expect(pm.response.json().error.fields).to.have.property('prefix'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename department - manager token",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/departments/{{newDepartmentId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Not allowed\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename department - unknown",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/departments/999999",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ghost\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
                 ]
               }
             }

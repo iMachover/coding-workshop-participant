@@ -22,6 +22,12 @@ export const formatNumber = (value) => number.format(value ?? 0);
 /** Two-digit count as in the mockups: 2 → "02". */
 export const formatCount = (value) => String(value ?? 0).padStart(2, '0');
 
+/** Today as YYYY-MM-DD in the browser's own time zone (the UTC date can already be tomorrow). */
+export function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** Parse a YYYY-MM-DD date as a local calendar day (no time-zone shift). */
 function parseDay(value) {
   const [y, m, d] = value.split('-').map(Number);

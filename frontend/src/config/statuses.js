@@ -46,6 +46,8 @@ export const NO_TEAM = { none: { label: 'No team assigned', tone: 'warning' } };
 
 export const AUDIT_ACTION = {
   created: 'Created',
+  started: 'Started',
+  unassigned: 'Released',
   updated: 'Updated',
   archived: 'Archived',
   restored: 'Restored',
@@ -57,4 +59,18 @@ export const AUDIT_ACTION = {
   closed: 'Closed',
   logged_hours: 'Logged hours',
   noted: 'Added note',
+  deleted: 'Removed',
+};
+
+/** Chip colour per audit action (Audit activity page). Anything not listed is info blue. */
+export const AUDIT_TONE = {
+  created: 'success',
+  completed: 'success',
+  approved: 'success',
+  restored: 'success',
+  closed: 'success',
+  archived: 'muted',
+  deleted: 'danger',
+  unassigned: 'warning',
+  reopened: 'warning',
 };

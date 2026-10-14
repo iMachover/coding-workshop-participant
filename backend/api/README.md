@@ -21,11 +21,15 @@ backend/api/
 │   │   ├── seed.py        # Idempotent dev users + sample data
 │   │   └── bootstrap.py   # CLI: python -m app.db.bootstrap
 │   ├── auth/              # POST /auth/login
-│   ├── users/             # GET /me, admin people management, manager's direct reports
+│   ├── users/             # GET/PATCH /me, admin people management, manager's direct reports
 │   ├── overview/          # The three Overview endpoints and the shared project figures query
 │   ├── projects/          # Projects CRUD, archive and restore
 │   ├── work/              # Tasks, milestones, notes, close project
-│   └── teams/             # Manager teams and the employee's My teams
+│   ├── teams/             # Manager teams and the employee's My teams
+│   ├── hours/             # Time entries: ledger, log, correct, delete
+│   ├── audit/             # Audit activity and Archives (read-only)
+│   ├── reports/           # Manager reports (read-only)
+│   └── departments/       # Departments: list, create, rename
 ├── db/migrations/         # Numbered SQL migrations
 ├── tests/                 # pytest (runs against a real PostgreSQL database)
 └── postman/               # Postman collection
@@ -123,6 +127,42 @@ Health, progress and cost come from the same query the Overview pages use
 | GET | `/me/teams` | employee: their manager, `active_milestone_id`, and each team with its members' progress (never their cost) and each project's current milestone, the employee's own progress and hours in it, and `is_active` when that milestone holds their work in progress |
 
 Codes are display-only: `USR-###` and `TEAM-##` are formatted from the id.
+
+## Time entry endpoints
+
+Hours are logged after the work, never timed (EMPLOYEE.md §2). Cost is hours × the person's
+hourly rate at the time of reading.
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/me/time-entries?from=&to=` | employee. Entries between two dates (default: this week, Monday to Sunday; at most 92 days), newest first, each with `editable`; plus the week's hours and cost, `available_hours` against the 40 h capacity, lifetime figures and `loggable_tasks` (own tasks in progress or submitted on active projects). |
+| GET | `/tasks/{id}/time-entries` | employee: own entries on own task (404 otherwise); manager: every entry on a task of their projects; admin: all |
+| POST | `/tasks/{id}/time-entries` | employee. Body: work_date, hours (0 < h ≤ 24), note?. 404 unless the task is theirs; 409 while it is still assigned, once completed, or when the project is closed or archived; 400 for a future date or when the day would exceed 24 h in total. Audit `logged_hours` on the task. |
+| PATCH | `/time-entries/{id}` | employee: work_date, hours, note of an own entry; same checks; 409 once the task is completed. Audit row only when something changed. |
+| DELETE | `/time-entries/{id}` | employee: remove an own entry while the task is not completed (204). Audit `deleted`. |
+
+## Audit and archive endpoints
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/audit?q=&action=&entity_type=&actor_id=&from=&to=&page=&limit=` | admin. Newest first; `q` matches the summary, the record code or the actor's name; `from` / `to` are inclusive dates. The envelope adds `actions`, `entity_types` and `actors` seen in the log, for the filter dropdowns. |
+| GET | `/audit/{id}` | admin: the row, its stored `details` and `changes` (one `{field, before, after}` per field) |
+| GET | `/archives?q=&type=&page=&limit=` | admin: archived projects and users in one list, newest archive first (`archived_at` and `archived_by` come from the latest `archived` audit row). `type` is `project` or `user`. Restore with `POST /projects/{id}/restore` or `POST /users/{id}/restore`. |
+
+## Reports endpoint
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/manager/reports` | manager. `totals` across their active projects (budget, planned and actual cost, remaining, planned and actual hours, remaining); `projects` with hours, cost, budget use and delivery per project; `weekly_cost` for the last five Monday-to-Sunday weeks (Σ hours × rate of entries on their projects); `over_allocated` direct reports above 40 h this week; `attention`, the at-risk project or the one whose budget use runs furthest ahead of delivery. Same figures as the Overview and Projects pages. |
+
+## Settings and department endpoints
+
+| Method | Path | Who |
+|--------|------|-----|
+| PATCH | `/me` | any signed-in user: first_name, last_name, email (unique, case-insensitive). Nothing else is self-service. Audit row only when something changed. |
+| GET | `/departments` | any signed-in user: every department with its prefix, next project number, active people and active projects |
+| POST | `/departments` | admin: name (unique) and prefix (exactly three letters, stored upper-case, unique). 400 with `fields` otherwise. |
+| PATCH | `/departments/{id}` | admin: name and / or prefix. Existing project codes keep the prefix they were created with. |
 
 ### Error format
 
