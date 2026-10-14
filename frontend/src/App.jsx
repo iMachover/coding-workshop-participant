@@ -1,15 +1,20 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
+import { theme } from './theme';
 import { AuthProvider } from './context/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ROUTE_ROLES } from './config/navigation';
+import { AppShell } from './layout/AppShell';
 import { LoginPage } from './pages/LoginPage';
-import { HomePage } from './pages/HomePage';
-
-const theme = createTheme();
+import { NotFoundPage } from './pages/NotFoundPage';
+import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /**
  * Application root: theme, auth state and routing.
+ *
+ * Every signed-in page sits inside AppShell. Each path is limited to the roles
+ * whose sidebar lists it (config/navigation.js); other roles get the no-access page.
  */
 function App() {
   return (
@@ -20,14 +25,25 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
-              path="/"
               element={
                 <ProtectedRoute>
-                  <HomePage />
+                  <AppShell />
                 </ProtectedRoute>
               }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            >
+              {Object.entries(ROUTE_ROLES).map(([path, roles]) => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <ProtectedRoute roles={roles}>
+                      <PlaceholderPage path={path} />
+                    </ProtectedRoute>
+                  }
+                />
+              ))}
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
           </Routes>
         </AuthProvider>
       </BrowserRouter>

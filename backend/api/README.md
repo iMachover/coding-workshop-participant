@@ -18,7 +18,7 @@ backend/api/
 │   ├── db/
 │   │   ├── connection.py  # Shared psycopg connection, get_db dependency
 │   │   ├── migrations.py  # Applies db/migrations/*.sql (schema_migrations table)
-│   │   ├── seed.py        # Idempotent dev users
+│   │   ├── seed.py        # Idempotent dev users + sample data
 │   │   └── bootstrap.py   # CLI: python -m app.db.bootstrap
 │   ├── auth/              # POST /auth/login
 │   └── users/             # GET /me
@@ -103,7 +103,8 @@ Sample dates are relative to the day the seed first runs.
 cd backend/api
 python3.13 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 createdb project_tracker            # once
-export JWT_SECRET=local-dev-secret POSTGRES_NAME=project_tracker
+cp .env.sample .env                 # once; edit POSTGRES_USER/PASS for your machine
+set -a && . ./.env && set +a        # load the settings into this shell
 .venv/bin/python -m app.db.bootstrap            # apply migrations + seed
 .venv/bin/uvicorn app.main:app --reload --port 8000
 curl -s -X POST localhost:8000/auth/login -H 'Content-Type: application/json' \

@@ -186,13 +186,14 @@ due dates; a few resources; a week of time entries for emp001 so Overview and My
 
 ## 9. Foundation work before flow 1 (not employee-specific)
 
-Status as of 2026-10-13. Flow 1 (login) is implemented end to end; see `backend/api/README.md`.
+Status as of 2026-10-13. Flow 1 (login) is implemented end to end and the foundation below is in
+place; see `README.md` (repo root) and `backend/api/README.md`.
 
 - [x] `backend/api/` service skeleton (function.py + requirements.txt so the template discovers it).
       FastAPI + Mangum, folders per domain (`app/auth`, `app/users`, `app/core`, `app/db`).
 - [x] Numbered SQL migrations in `backend/api/db/migrations/` + seed. Applied on first request per
-      Lambda container (advisory-locked), tracked in `schema_migrations`. `001_create_users.sql` only;
-      later tables land with their slices.
+      Lambda container (advisory-locked), tracked in `schema_migrations`. `001_create_users.sql`
+      (users) and `002_create_core_tables.sql` (the other 12 tables, from the approved ER diagram).
 - [x] `function.py` strips the `/api/api` prefix (CloudFront keeps it, local proxy removes it).
 - [x] `Authorization` forwarded by `bin/proxy-server.js`; its preflight allow-list is now
       `Authorization, Content-Type`.
@@ -201,18 +202,18 @@ Status as of 2026-10-13. Flow 1 (login) is implemented end to end; see `backend/
       (terraform is not installed on this machine).
 - [x] CORS restricted from `*` to `aws_cors_origins` (default `http://localhost:3000`) in both the
       Lambda Function URL config and the FastAPI middleware. Behind CloudFront the API is same-origin.
-- [x] Frontend: react-router, @mui/material, prop-types, fetch wrapper in `src/services/apiClient.js`,
-      `AuthProvider` context, `ProtectedRoute`, `LoginPage`. `HomePage` is a placeholder until the
-      dashboard mockup is approved.
-- [x] pytest suite (28 tests against a real PostgreSQL database) + Postman collection in
+- [x] Frontend: react-router, @mui/material, @mui/icons-material, prop-types, fetch wrapper in
+      `src/services/apiClient.js`, `AuthProvider` context, `ProtectedRoute`, `LoginPage`.
+- [x] Shared app shell (sidebar + top bar + page header) used by all roles, in `src/layout/`.
+      Role-based routes: `src/config/navigation.js` lists each role's pages and doubles as the
+      route allow-list; other roles get a "no access" page. Unbuilt pages show a placeholder
+      naming their spec.
+- [x] pytest suite (46 tests against a real PostgreSQL database) + Postman collection in
       `backend/api/postman/`.
+- [x] Seed extended in `app/db/seed.py` with departments, projects, teams, milestones, tasks,
+      resources, a week of time entries and a note thread (see §8). Logins in `LOGIN.md`.
 - [ ] Not yet: token refresh (client re-logs in on `401 TOKEN_EXPIRED`), login rate limiting,
       frontend component tests, deploy to LocalStack/AWS to verify.
-- [ ] Not yet (from mockup review): shared app shell (sidebar + top bar + page header) used by
-      all roles; migrations `002+` for departments, projects, teams, milestones, tasks,
-      task_resources, time_entries, milestone_notes, audit_log, landing with their slices.
-- [ ] Not yet: seed extended in `app/db/seed.py` with departments, projects, teams, milestones,
-      tasks, resources and a week of time entries (see §8).
 
 Auth decisions: HS256 JWT, 8 h expiry, claims `sub` (user id), `username`, `role`; bcrypt cost 12;
 one generic `401 INVALID_CREDENTIALS` for unknown user / wrong password / archived account; every
