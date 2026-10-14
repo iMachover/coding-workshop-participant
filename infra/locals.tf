@@ -111,6 +111,9 @@ locals {
     MONGO_NAME    = data.aws_caller_identity.this.id == "000000000000" ? "mongo" : try(one(aws_docdb_cluster.this.*.database_name), "")
     MONGO_USER    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_username), "")
     MONGO_PASS    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_password), "")
+    # Authentication: JWT signing secret (never exposed to the frontend) and allowed browser origins
+    JWT_SECRET    = coalesce(try(trimspace(var.aws_jwt_secret), ""), random_password.jwt_secret.result)
+    CORS_ORIGINS  = var.aws_cors_origins
   }
   lambda_role_arn = format(
     "arn:%s:iam::%s:role/%s-lambda-%s-%s",

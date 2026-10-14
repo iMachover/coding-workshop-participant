@@ -1,0 +1,33 @@
+# Local virtualenv and tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.pip_installed
+
+# bin/start-dev.sh installs requirements.txt into this folder for LocalStack
+# hot reload. Those vendored packages must never be committed.
+*.dist-info/
+bin/
+annotated_types/
+anyio/
+bcrypt/
+certifi/
+click/
+fastapi/
+h11/
+httpcore/
+httpx/
+idna/
+jwt/
+mangum/
+psycopg/
+psycopg_binary/
+psycopg_binary.libs/
+pydantic/
+pydantic_core/
+sniffio/
+starlette/
+typing_extensions.py
+typing_inspection/
+uvicorn/

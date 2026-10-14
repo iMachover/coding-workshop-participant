@@ -41,11 +41,13 @@ module "lambda" {
   authorization_type                = "NONE"
   dead_letter_target_arn            = aws_sqs_queue.this[each.key].arn
 
+  # Browser access: only the configured frontend origins may call the Function URL directly.
+  # In the cloud, CloudFront serves the API under the same origin as the UI, so no CORS is needed there.
   cors = {
     allow_credentials = false
-    allow_headers     = ["*"]
+    allow_headers     = ["authorization", "content-type"]
     allow_methods     = ["*"]
-    allow_origins     = ["*"]
+    allow_origins     = [for origin in split(",", var.aws_cors_origins) : trimspace(origin)]
     expose_headers    = []
     max_age           = 0
   }

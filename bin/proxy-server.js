@@ -38,7 +38,7 @@ const server = http.createServer((req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   res.setHeader('Access-Control-Max-Age', '86400');
 
   // Handle preflight
@@ -92,17 +92,24 @@ const server = http.createServer((req, res) => {
   delete headers['sec-fetch-dest'];
 
   // Keep only essential headers
+  const forwardedHeaders = {
+    'accept': headers.accept || 'application/json',
+    'content-type': headers['content-type'] || 'application/json',
+    'user-agent': headers['user-agent'] || 'proxy-server',
+    'host': target.host
+  };
+
+  // Forward the JWT so authenticated API calls work locally (CloudFront forwards it in the cloud)
+  if (headers.authorization) {
+    forwardedHeaders.authorization = headers.authorization;
+  }
+
   const options = {
     hostname: target.hostname,
     port: target.port,
     path: target.path,
     method: req.method,
-    headers: {
-      'accept': headers.accept || 'application/json',
-      'content-type': headers['content-type'] || 'application/json',
-      'user-agent': headers['user-agent'] || 'proxy-server',
-      'host': target.host
-    }
+    headers: forwardedHeaders
   };
 
   const proxyReq = protocol.request(options, (proxyRes) => {

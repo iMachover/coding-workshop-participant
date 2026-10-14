@@ -83,3 +83,16 @@ variable "aws_eks_type" {
     error_message = "The aws_eks_type variable must be either 'ON_DEMAND' or 'SPOT'."
   }
 }
+
+variable "aws_jwt_secret" {
+  description = "Secret used to sign API JSON Web Tokens. Leave empty to use a random value stored in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "aws_cors_origins" {
+  description = "Comma-separated browser origins allowed to call the API directly. Behind CloudFront the API is same-origin, so only the local dev server is needed."
+  type        = string
+  default     = "http://localhost:3000"
+}
