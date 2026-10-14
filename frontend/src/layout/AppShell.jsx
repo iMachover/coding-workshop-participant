@@ -5,6 +5,7 @@ import Drawer from '@mui/material/Drawer';
 import { SIDEBAR_WIDTH } from '../theme';
 import { Footer } from './Footer';
 import { Sidebar } from './Sidebar';
+import { WorkPanels } from '../pages/work/WorkPanels';
 import { TopBar } from './TopBar';
 
 /**
@@ -57,6 +58,7 @@ export function AppShell() {
           <Outlet />
           <Footer />
         </Box>
+        <WorkPanels />
       </Box>
     </Box>
   );

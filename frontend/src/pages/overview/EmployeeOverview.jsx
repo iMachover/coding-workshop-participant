@@ -16,6 +16,7 @@ import ChecklistOutlined from '@mui/icons-material/ChecklistOutlined';
 import FolderOutlined from '@mui/icons-material/FolderOutlined';
 import PaidOutlined from '@mui/icons-material/PaidOutlined';
 import { useApiGet } from '../../hooks/useApiGet';
+import { usePanelParams } from '../../hooks/usePanelParams';
 import { HEALTH, TASK_STATUS } from '../../config/statuses';
 import { FigureRow } from '../../components/FigureRow';
 import { HighlightBanner } from '../../components/HighlightBanner';
@@ -139,7 +140,7 @@ function Content({ data }) {
         <SectionCard
           title="Your assigned work"
           count={tasks.length}
-          subtitle="Open tasks, in the order you can work on them."
+          subtitle="Open tasks, in the order you can work on them. Select one to start or submit it."
           footer={`Submitted is not completed. ${manager} reviews and approves your work.`}
         >
           <TaskTable tasks={tasks} />
@@ -169,6 +170,7 @@ function Content({ data }) {
 }
 
 function TaskTable({ tasks }) {
+  const { open } = usePanelParams();
   if (!tasks.length) {
     return <EmptyState text="No open tasks. Your submitted work will appear here when it is ready for review." />;
   }
@@ -185,7 +187,7 @@ function TaskTable({ tasks }) {
         </TableHead>
         <TableBody>
           {tasks.map((task) => (
-            <TableRow key={task.id}>
+            <TableRow key={task.id} hover sx={{ cursor: 'pointer' }} onClick={() => open('task', task.id)}>
               <TableCell>
                 <Typography sx={{ fontFamily: monoFont, fontSize: 10, color: '#7a8c7e', mb: 0.25 }}>
                   {task.code} · {task.milestone_name}
@@ -195,6 +197,7 @@ function TaskTable({ tasks }) {
                   component={RouterLink}
                   to={`/projects?selected=${task.project_id}`}
                   underline="hover"
+                  onClick={(event) => event.stopPropagation()}
                   sx={{ display: 'block', fontSize: 10, mt: 0.25, color: 'text.secondary' }}
                 >
                   {task.project_name}

@@ -76,6 +76,21 @@ Every write records a row in `audit_log` through `app/core/audit.py` (`record` a
 Health, progress and cost come from the same query the Overview pages use
 (`app/overview/repository.py: project_rows`), so every page agrees on the figures.
 
+## Task and milestone endpoints
+
+| Method | Path | Who |
+|--------|------|-----|
+| GET | `/tasks/{id}` | employee: own tasks; manager: tasks on their projects; admin: all. Returns figures, resources, `display_status` (adds Blocked / Queued) and the actions the viewer may take (`can_start`, `can_submit`, `can_review`, `blocked_reason`). |
+| PATCH | `/tasks/{id}` | employee, body `{"status": "in_progress" \| "submitted"}`. Forward only. 409 when the milestone is locked, when another milestone holds the employee's in-progress work (one active milestone), or when the status would go backwards. Starting the first task of a milestone moves it to in_progress. |
+| POST | `/tasks/{id}/complete` | manager of the project: submitted → completed |
+| POST | `/tasks/{id}/reopen` | manager: submitted or completed → in_progress (clears submitted_at / completed_at). 409 inside an approved milestone. |
+| GET | `/milestones/{id}` | anyone on the project (or its manager / admin): milestone, tasks (employee: own only), notes, `can_approve` / `approve_blocker` and `assignable` people for the manager |
+| POST | `/projects/{id}/milestones` | manager: appends the next milestone; `sequence` = last + 1 |
+| POST | `/milestones/{id}/tasks` | manager: title, description?, predicted_hours, due_date?, assigned_to. 400 unless the assignee is on a team attached to the project. Code `TSK-###`. |
+| POST | `/milestones/{id}/approve` | manager: 409 unless the milestone is unlocked and every task is completed; stamps completed_at and unlocks the next |
+| POST | `/milestones/{id}/notes` | employee or manager on the project (admins read only) |
+| POST | `/projects/{id}/close` | manager: 409 unless every milestone is approved; sets status closed |
+
 ### Error format
 
 ```json

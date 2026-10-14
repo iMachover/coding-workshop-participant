@@ -102,16 +102,30 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
 - [x] Docs: README status, endpoints and layout; backend README "Project endpoints"
 - [ ] Deferred to slice 3: milestone notes and task approval inside the panel; `POST /projects/{id}/close`
 - [ ] Deferred: Employee Overview "project memberships" / "what comes next" blocks (need `GET /me/teams`)
-- [ ] Owner reviews
+- [x] Owner reviewed and committed 2026-10-14 (bf4af04)
 
 ### Slice 3: tasks and milestones
-- [ ] Employee: `PATCH /tasks/{id}/status`, forward only; 409 if another milestone is already active
-- [ ] Manager: approve or reopen tasks; create milestones in sequence; approve or reopen milestones
-- [ ] `POST /milestones/{id}/notes`
-- [ ] pytest, Postman
-- [ ] Side panel actions and Overview action buttons
-- [ ] Playwright set up, with the first e2e tests
-- [ ] Docs
+- [x] Employee: `PATCH /tasks/{id}` forward only; 409 when the milestone is locked (Blocked), when
+      another milestone holds their in-progress work (one active milestone, across projects), or
+      when the status would go backwards
+- [x] Manager: complete / reopen tasks, `POST /projects/{id}/milestones` (sequence = last + 1),
+      `POST /milestones/{id}/tasks` (assignee must be on a team attached to the project),
+      `POST /milestones/{id}/approve` (every task completed, unlocks the next), `POST /projects/{id}/close`
+- [x] `GET /tasks/{id}`, `GET /milestones/{id}` scoped per role; `POST /milestones/{id}/notes`
+- [x] pytest: 16 tests incl. the full loop (finish tasks → approve both milestones → close) → 125 total;
+      Postman "Tasks and milestones" folder (21 requests)
+- [x] Panels mounted once in the shell and driven by the URL (`?selected=&milestone=&task=`), so any
+      page links into them and the browser back button closes them; `RefreshProvider` reloads lists
+      after a panel action
+- [x] Task panel: Start / Submit (employee), Approve / Request changes / Reopen (manager);
+      milestone panel: tasks, add task form, approve, note conversation; project panel: add milestone,
+      close project; Overview buttons wired (employee task rows, manager review queue, milestone cards,
+      "Assign employee")
+- [x] Playwright e2e suite in `frontend/e2e/` (`npm run test:e2e`): sign-in and forbidden route,
+      employee submits a task, manager approves and reopens it, admin creates and archives a project
+- [x] Docs: READMEs, TESTING.md, this file
+- [ ] Deferred to slice 4: attach teams so new projects can get tasks; "Log hours" button (slice 5)
+- [x] Owner reviewed and committed 2026-10-14
 
 ### Slice 4: People, My team, My teams
 - [ ] Admin: `GET/POST/PATCH /users`, archive a user

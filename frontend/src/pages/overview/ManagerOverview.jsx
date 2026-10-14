@@ -11,12 +11,14 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AccessTimeOutlined from '@mui/icons-material/AccessTimeOutlined';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
+import PersonAddOutlined from '@mui/icons-material/PersonAddOutlined';
 import CheckOutlined from '@mui/icons-material/CheckOutlined';
 import LayersOutlined from '@mui/icons-material/LayersOutlined';
 import LockOutlined from '@mui/icons-material/LockOutlined';
 import PaidOutlined from '@mui/icons-material/PaidOutlined';
 import { useAuth } from '../../context/useAuth';
 import { useApiGet } from '../../hooks/useApiGet';
+import { usePanelParams } from '../../hooks/usePanelParams';
 import { HEALTH, MILESTONE_STATUS, NO_TEAM, TASK_STATUS } from '../../config/statuses';
 import { EmptyState } from '../../components/EmptyState';
 import { FigureRow } from '../../components/FigureRow';
@@ -45,9 +47,12 @@ import {
  */
 export function ManagerOverview() {
   const { user } = useAuth();
+  const { open } = usePanelParams();
   const [projectId, setProjectId] = useState(null);
   const path = projectId ? `/manager/overview?project_id=${projectId}` : '/manager/overview';
   const { data, error, retry } = useApiGet(path);
+  // "Assign employee" plans a task in the milestone that is currently open for work.
+  const planning = data?.focus?.milestones.find((m) => !m.locked && m.status !== 'completed');
 
   const selector = data?.projects.length > 1 && (
     <TextField
@@ -72,7 +77,16 @@ export function ManagerOverview() {
         eyebrow={`Delivery overview · ${user.first_name} ${user.last_name}`}
         title="Overview"
         subtitle="Your projects, approvals and team capacity this week."
-        actions={selector}
+        actions={
+          <>
+            {selector}
+            {planning && (
+              <Button variant="contained" startIcon={<PersonAddOutlined />} onClick={() => open('milestone', planning.id)}>
+                Assign employee
+              </Button>
+            )}
+          </>
+        }
       />
       {data && error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -221,6 +235,7 @@ function Content({ data }) {
 }
 
 function MilestoneSequence({ milestones }) {
+  const { open } = usePanelParams();
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: `repeat(${Math.min(milestones.length, 3)}, 1fr)` } }}>
       {milestones.map((m) => {
@@ -232,7 +247,12 @@ function MilestoneSequence({ milestones }) {
         return (
           <Box
             key={m.id}
-            sx={{ px: 2.1, py: 2, minWidth: 0, boxShadow: (theme) => `-1px -1px 0 ${theme.palette.divider}` }}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open milestone ${m.name}`}
+            onClick={() => open('milestone', m.id)}
+            onKeyDown={(event) => event.key === 'Enter' && open('milestone', m.id)}
+            sx={{ px: 2.1, py: 2, minWidth: 0, cursor: 'pointer', boxShadow: (theme) => `-1px -1px 0 ${theme.palette.divider}`, '&:hover': { bgcolor: '#f0f4e9' } }}
           >
             <MilestoneMarker state={state} sequence={m.sequence} />
             <Typography sx={{ fontSize: 12, fontWeight: 650, mt: 1.25, mb: 0.625 }}>{m.name}</Typography>
@@ -316,6 +336,7 @@ function PeopleList({ people, capacity }) {
 }
 
 function ReviewQueue({ queue }) {
+  const { open } = usePanelParams();
   if (!queue.length) {
     return <EmptyState text="Nothing to review. Submitted tasks appear here until you approve or reopen them." />;
   }
@@ -330,6 +351,11 @@ function ReviewQueue({ queue }) {
         {formatHours(item.actual_hours)} actual / {formatHours(item.planned_hours)} planned · {formatMoney(item.actual_cost)}
       </Typography>
       <StatusChip status="submitted" map={TASK_STATUS} />
+      <Box sx={{ mt: 1.5 }}>
+        <Button variant="contained" size="small" endIcon={<ArrowForwardOutlined />} onClick={() => open('task', item.id)}>
+          Review submission
+        </Button>
+      </Box>
     </Box>
   ));
 }

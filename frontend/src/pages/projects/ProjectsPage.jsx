@@ -1,6 +1,5 @@
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -14,6 +13,7 @@ import AddOutlined from '@mui/icons-material/AddOutlined';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
 import { useAuth } from '../../context/useAuth';
 import { useApiGet } from '../../hooks/useApiGet';
+import { usePanelParams } from '../../hooks/usePanelParams';
 import { HEALTH, NO_TEAM } from '../../config/statuses';
 import { ROLE_LABELS } from '../../config/navigation';
 import { EmptyState } from '../../components/EmptyState';
@@ -29,7 +29,6 @@ import { fetchProjectOptions } from '../../services/projectsService';
 import { monoFont } from '../../theme';
 import { formatDate, formatHours, formatMoney } from '../../utils/format';
 import { ProjectForm } from './ProjectForm';
-import { ProjectPanel } from './ProjectPanel';
 
 const HEALTH_FILTERS = [
   { value: 'all', label: 'All' },
@@ -45,8 +44,7 @@ const HEALTH_FILTERS = [
  */
 export function ProjectsPage() {
   const { user } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const selected = params.get('selected') ? Number(params.get('selected')) : null;
+  const { open } = usePanelParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [creating, setCreating] = useState(false);
@@ -59,7 +57,7 @@ export function ProjectsPage() {
     if (isAdmin) fetchProjectOptions().then(setOptions, () => setOptions(null));
   }, [isAdmin]);
 
-  const select = (id) => setParams(id ? { selected: String(id) } : {}, { replace: true });
+  const select = (id) => open('selected', id);
 
   const query = search.trim().toLowerCase();
   const visible = (projects ?? []).filter(
@@ -129,8 +127,6 @@ export function ProjectsPage() {
         </>
       )}
 
-      <ProjectPanel projectId={selected} options={options} onClose={() => select(null)} onChanged={retry} />
-
       <SidePanel open={creating} title="Create a project" onClose={() => setCreating(false)}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           One manager owns the project. Team and employee assignments are made by that manager.
@@ -194,7 +190,7 @@ function ProjectTable({ projects, mine, onOpen }) {
                 <TeamLine teamNames={p.team_names} />
               </TableCell>
               <TableCell>
-                <StatusChip status={p.health} map={HEALTH} />
+                <StatusChip status={p.status === 'closed' ? 'closed' : p.health} map={{ ...HEALTH, closed: { label: 'Closed', tone: 'muted' } }} />
               </TableCell>
               <TableCell>
                 <Meter percent={p.progress.percent} warn={p.health === 'at_risk'} label={`${p.progress.percent}% complete`} />
@@ -230,6 +226,7 @@ ProjectTable.propTypes = {
       department: PropTypes.string,
       manager_name: PropTypes.string,
       health: PropTypes.string.isRequired,
+      status: PropTypes.string,
       progress: PropTypes.shape({ percent: PropTypes.number }).isRequired,
       end_date: PropTypes.string,
       budget: PropTypes.number,

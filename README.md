@@ -19,7 +19,8 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | App shell: sidebar, top bar, page header, role-based routes | Done |
 | Overview page for each role (read-only, real data) | Done; its action buttons come with later slices |
 | Projects page and API for all roles (list, detail, create, edit, archive) | Done ([BUILD_PLAN.md](BUILD_PLAN.md) slice 2) |
-| Tasks and milestones workflow | Next (slice 3) |
+| Tasks and milestones: start/submit, review, plan tasks, add and approve milestones, notes, close project | Done (slice 3) |
+| Teams: My team, My teams, people | Next (slice 4) |
 | Employee pages and API: My teams, My hours, Settings | Later ([EMPLOYEE.md](EMPLOYEE.md)) |
 | Manager pages and API beyond Overview | Not started ([MANAGER.md](MANAGER.md)) |
 | Admin pages and API beyond Overview | Not started ([ADMIN.md](ADMIN.md)) |
@@ -41,6 +42,15 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | POST | `/projects` | admin |
 | PATCH | `/projects/{id}` | admin (any field incl. manager); manager (name, description, dates, budget of own) |
 | POST | `/projects/{id}/archive`, `/restore` | admin |
+| GET | `/tasks/{id}` | employee (own), manager (own projects), admin |
+| PATCH | `/tasks/{id}` | employee: `{status: in_progress \| submitted}`, forward only; 409 if the milestone is locked or another milestone is active |
+| POST | `/tasks/{id}/complete`, `/reopen` | manager of the project |
+| GET | `/milestones/{id}` | anyone on the project: tasks (employee: own), notes, approval state |
+| POST | `/projects/{id}/milestones` | manager: next milestone in sequence |
+| POST | `/milestones/{id}/tasks` | manager: assignee must be on a team attached to the project |
+| POST | `/milestones/{id}/approve` | manager: 409 unless every task is completed |
+| POST | `/milestones/{id}/notes` | employee or manager on the project |
+| POST | `/projects/{id}/close` | manager: 409 unless every milestone is approved |
 | GET | `/health` | anyone |
 
 ## Tech stack
@@ -68,13 +78,14 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 │       ├── config/statuses.js     # Labels and colours for task, milestone and health states
 │       ├── pages/                 # Login, placeholder, no-access, not-found pages
 │       │   ├── overview/          # Overview page, one version per role
-│       │   └── projects/          # Projects page, project side panel, create/edit form
+│       │   ├── projects/          # Projects page, project side panel, create/edit form
+│       │   └── work/              # Milestone and task side panels, mounted once in the shell
 │       ├── components/            # ProtectedRoute, stat cards, status chips, banners, meters,
 │       │                          #   side panel, table toolbar, person cell, empty state
-│       ├── hooks/                 # useApiGet (load one API path)
+│       ├── hooks/                 # useApiGet (load one API path), usePanelParams (side panels in the URL)
 │       ├── utils/format.js        # Money, hours and date formatting
-│       ├── context/               # AuthProvider (signed-in user, login, logout), ToastProvider
-│       └── services/              # API client, auth calls, project writes
+│       ├── context/               # AuthProvider (signed-in user, login, logout), ToastProvider, RefreshProvider
+│       └── services/              # API client, auth calls, project and workflow writes
 ├── infra/                 # Terraform
 ├── bin/                   # Start, deploy and setup scripts
 └── docs/                  # Workshop guides
@@ -130,8 +141,9 @@ Three roles, enforced in two places:
 ## Tests and checks
 
 ```sh
-cd backend/api && .venv/bin/python -m pytest   # 109 tests, needs PostgreSQL (see backend README)
+cd backend/api && .venv/bin/python -m pytest   # 125 tests, needs PostgreSQL (see backend README)
 cd frontend && npm run lint && npm run build
+cd frontend && npm run test:e2e                # Playwright, needs the dev stack running (see frontend/e2e/README.md)
 ```
 
 ## Design references

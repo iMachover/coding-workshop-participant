@@ -5,6 +5,7 @@ import { theme } from './theme';
 import { AuthProvider } from './context/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ROUTE_ROLES } from './config/navigation';
+import { RefreshProvider } from './context/RefreshProvider';
 import { ToastProvider } from './context/ToastProvider';
 import { AppShell } from './layout/AppShell';
 import { LoginPage } from './pages/LoginPage';
@@ -32,30 +33,32 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <AppShell />
-                  </ProtectedRoute>
-                }
-              >
-                {Object.entries(ROUTE_ROLES).map(([path, roles]) => {
-                  const Page = BUILT_PAGES[path];
-                  return (
-                    <Route
-                      key={path}
-                      path={path}
-                      element={
-                        <ProtectedRoute roles={roles}>{Page ? <Page /> : <PlaceholderPage path={path} />}</ProtectedRoute>
-                      }
-                    />
-                  );
-                })}
-                <Route path="*" element={<NotFoundPage />} />
-              </Route>
-            </Routes>
+            <RefreshProvider>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <AppShell />
+                    </ProtectedRoute>
+                  }
+                >
+                  {Object.entries(ROUTE_ROLES).map(([path, roles]) => {
+                    const Page = BUILT_PAGES[path];
+                    return (
+                      <Route
+                        key={path}
+                        path={path}
+                        element={
+                          <ProtectedRoute roles={roles}>{Page ? <Page /> : <PlaceholderPage path={path} />}</ProtectedRoute>
+                        }
+                      />
+                    );
+                  })}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Route>
+              </Routes>
+            </RefreshProvider>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
