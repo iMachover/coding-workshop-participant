@@ -98,7 +98,7 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 ├── EMPLOYEE.md            # Employee role spec: flows, tables, pages, API, build checklist (§9)
 ├── MANAGER.md             # Manager role spec
 ├── ADMIN.md               # Admin role spec
-├── assets/                # Page mockups per role (PNG); see note below
+├── assets/                # Design source: mockup PNGs per role + the React prototype handoff
 ├── backend/api/           # The API: app/, db/migrations/, tests/, postman/
 ├── frontend/              # React app
 │   └── src/
@@ -128,8 +128,8 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 └── docs/                  # Workshop guides
 ```
 
-`assets/` is currently ignored by `.gitignore`, so the mockups exist only on the machine that has
-them.
+`assets/` is committed so every machine (including the workshop VM) has the designs the pages are
+built from: `assets/{admin,manager,employee}/*.png` and `assets/acme-react-handoff/`.
 
 ## Running it
 
