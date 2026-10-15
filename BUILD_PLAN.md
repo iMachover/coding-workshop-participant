@@ -203,8 +203,9 @@ Each slice: backend endpoints, tests, page, Postman, docs, then ready for review
       shell updates at once
 - [x] Departments (`app/departments/`): `GET /departments` (all roles), `POST` and `PATCH` (admin; unique
       name, three-letter upper-case prefix; existing project codes keep theirs; audit rows)
-- [x] Page `/settings`: Account card (name, email, role badge, Save), Notifications card labelled as not
-      saved, "Your access" side card per role, Departments card for admins (list, create, rename)
+- [x] Page `/settings`: Account card (name, email, role badge, Save), "Your access" side card per role,
+      Departments card for admins (list, create, rename). The Notifications card was removed (2026-10-14):
+      nothing delivers notifications, so the checkboxes had no effect
 - [x] Browser check (admin at 1440px, employee at 390px, no console errors)
 - [x] pytest: 44 tests (`test_settings.py`); Postman "Settings" folder (19 requests); Playwright flow (rename and back)
 - [x] Docs: READMEs, TESTING.md, this file

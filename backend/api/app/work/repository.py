@@ -113,6 +113,7 @@ def milestone(conn: psycopg.Connection, milestone_id: int) -> dict[str, Any] | N
                    {_MILESTONE_LOCKED} AS locked,
                    p.code AS project_code, p.name AS project_name, p.manager_id,
                    p.status::text AS project_status, p.is_archived,
+                   p.start_date AS project_start_date, p.end_date AS project_end_date,
                    (SELECT count(*) FROM tasks t WHERE t.milestone_id = m.id) AS tasks_total,
                    (SELECT count(*) FROM tasks t WHERE t.milestone_id = m.id AND t.status = 'completed') AS tasks_completed
             FROM milestones m
@@ -228,11 +229,25 @@ def close_project(conn: psycopg.Connection, project_id: int) -> None:
         cur.execute("UPDATE projects SET status = 'closed', updated_at = now() WHERE id = %s", (project_id,))
 
 
-def project_brief(conn: psycopg.Connection, project_id: int) -> dict[str, Any] | None:
-    """Id, code, name, manager, status and archived flag of a project."""
+def milestone_dates(conn: psycopg.Connection, project_id: int) -> list[dict[str, Any]]:
+    """Sequence, name and dates of a project's milestones that have at least one date."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, code, name, manager_id, status::text AS status, is_archived FROM projects WHERE id = %s",
+            """
+            SELECT sequence, name, start_date, projected_end_date FROM milestones
+            WHERE project_id = %s AND (start_date IS NOT NULL OR projected_end_date IS NOT NULL)
+            ORDER BY sequence
+            """,
+            (project_id,),
+        )
+        return cur.fetchall()
+
+
+def project_brief(conn: psycopg.Connection, project_id: int) -> dict[str, Any] | None:
+    """Id, code, name, manager, status, archived flag and dates of a project."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, code, name, manager_id, status::text AS status, is_archived, start_date, end_date FROM projects WHERE id = %s",
             (project_id,),
         )
         return cur.fetchone()

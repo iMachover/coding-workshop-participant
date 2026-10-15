@@ -37,6 +37,12 @@ const HEALTH_FILTERS = [
   { value: 'at_risk', label: 'At risk' },
 ];
 
+// Employees only see projects they joined through a team, so "No team" is for admin and manager.
+const TEAM_FILTERS = [{ value: 'no_team', label: 'No team' }];
+
+const matchesFilter = (p, filter) =>
+  filter === 'all' || (filter === 'no_team' ? p.team_names.length === 0 : p.health === filter);
+
 /**
  * Projects page for every role (prototype `RolePage page="Projects"`): register banner,
  * searchable table, and a side panel per project. Admin creates and archives, manager
@@ -75,7 +81,7 @@ export function ProjectsPage() {
 
   const query = search.trim().toLowerCase();
   const visible = (projects ?? []).filter(
-    (p) => (filter === 'all' || p.health === filter) && `${p.code} ${p.name} ${p.manager_name}`.toLowerCase().includes(query),
+    (p) => matchesFilter(p, filter) && `${p.code} ${p.name} ${p.manager_name}`.toLowerCase().includes(query),
   );
   const sum = (key) => (projects ?? []).reduce((total, p) => total + (mine ? p.mine[key] : p[key]), 0);
 
@@ -126,14 +132,14 @@ export function ProjectsPage() {
                 placeholder="Search projects…"
                 filter={filter}
                 onFilter={setFilter}
-                filterLabel="Filter project health"
-                filterOptions={HEALTH_FILTERS}
+                filterLabel="Filter projects"
+                filterOptions={mine ? HEALTH_FILTERS : [...HEALTH_FILTERS, ...TEAM_FILTERS]}
               />
             }
             footer="Project dates and costs are estimates. Completion requires manager approval of all milestones."
           >
             {visible.length === 0 ? (
-              <EmptyState text={projects.length ? 'No projects match these filters. Try another search or reset the health filter.' : mine ? 'You are not on a project yet. Your manager assigns you through a team.' : 'No active projects.'} />
+              <EmptyState text={projects.length ? 'No projects match these filters. Try another search or reset the filter.' : mine ? 'You are not on a project yet. Your manager assigns you through a team.' : 'No active projects.'} />
             ) : (
               <ProjectTable projects={visible} mine={mine} onOpen={select} />
             )}

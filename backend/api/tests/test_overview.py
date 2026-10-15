@@ -18,11 +18,19 @@ def _get(client, path: str, username: str, password: str):
 
 
 def _project(**overrides):
-    return {"planned_hours": 100.0, "actual_hours": 50.0, "milestone_overdue": False, **overrides}
+    return {"planned_hours": 100.0, "actual_hours": 50.0, "milestone_overdue": False, "team_names": ["Platform"], **overrides}
 
 
 def test_health_on_track_by_default():
     assert health(_project()) == "on_track"
+
+
+def test_health_pending_without_a_team():
+    assert health(_project(team_names=[])) == "pending"
+
+
+def test_health_at_risk_without_a_team_when_hours_exceed_plan():
+    assert health(_project(team_names=[], actual_hours=101.0)) == "at_risk"
 
 
 def test_health_at_risk_when_hours_exceed_plan():

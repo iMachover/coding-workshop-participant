@@ -70,7 +70,7 @@ def test_admin_lists_every_active_project(client):
     codes = [p["code"] for p in response.json()]
     assert codes == ["INF-024", "OPS-018"]
     first = response.json()[0]
-    assert first["health"] in ("on_track", "at_risk")
+    assert first["health"] in ("on_track", "at_risk", "pending")
     assert first["mine"] is None
     assert first["progress"]["total"] > 0
     assert first["team_names"] == ["Server Ops"]

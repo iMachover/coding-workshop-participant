@@ -263,7 +263,15 @@ function TaskForm({ milestone, onSaved, onCancel }) {
       </TextField>
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
         <TextField label="Planned hours" type="number" value={values.predicted_hours} onChange={set('predicted_hours')} slotProps={{ htmlInput: { min: 0, step: 0.5 } }} error={!!errors.predicted_hours} helperText={errors.predicted_hours} />
-        <TextField label="Due date" type="date" value={values.due_date} onChange={set('due_date')} slotProps={{ inputLabel: { shrink: true } }} error={!!errors.due_date} helperText={errors.due_date} />
+        <TextField
+          label="Due date"
+          type="date"
+          value={values.due_date}
+          onChange={set('due_date')}
+          slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: milestone.due_from, max: milestone.due_until } }}
+          error={!!errors.due_date}
+          helperText={errors.due_date ?? `${formatDate(milestone.due_from)} to ${formatDate(milestone.due_until)}`}
+        />
       </Box>
       {errors.form && (
         <Typography variant="caption" color="error">
@@ -298,6 +306,8 @@ Detail.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string
 TaskForm.propTypes = {
   milestone: PropTypes.shape({
     id: PropTypes.number.isRequired,
+    due_from: PropTypes.string.isRequired,
+    due_until: PropTypes.string.isRequired,
     assignable: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.number, name: PropTypes.string, job_title: PropTypes.string })).isRequired,
   }).isRequired,
   onSaved: PropTypes.func.isRequired,

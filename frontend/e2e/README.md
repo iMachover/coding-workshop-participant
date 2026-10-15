@@ -16,6 +16,8 @@ Settings and seeing the sidebar update.
 cd frontend && npm run test:e2e
 ```
 
+Full guide, including starting the stack and fixing common errors: [../TESTING.md](../TESTING.md).
+
 The flows are repeatable on the same database: the task flow starts the task only if it is
 still assigned and ends by reopening it, the admin flows archive the project and the account
 they create (named "E2E check …" and "E2E Person …", visible under Archives), the team flow

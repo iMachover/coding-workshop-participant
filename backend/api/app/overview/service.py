@@ -57,9 +57,12 @@ def progress(completed: int, total: int) -> Progress:
 
 
 def health(project: dict[str, Any]) -> str:
-    """At risk if the active milestone is overdue or logged hours exceed planned hours."""
+    """At risk if the active milestone is overdue or logged hours exceed planned hours.
+    Otherwise pending while no team is assigned, else on track."""
     over_hours = project["planned_hours"] > 0 and project["actual_hours"] > project["planned_hours"]
-    return "at_risk" if project["milestone_overdue"] or over_hours else "on_track"
+    if project["milestone_overdue"] or over_hours:
+        return "at_risk"
+    return "on_track" if project["team_names"] else "pending"
 
 
 def _percent_of(part: float, whole: float) -> int:
@@ -212,13 +215,14 @@ def manager_overview(conn: psycopg.Connection, user: dict[str, Any], project_id:
 
     queue = repo.review_queue(conn, user["id"])
     at_risk = sum(1 for p in projects if health(p) == "at_risk")
+    on_track = sum(1 for p in projects if health(p) == "on_track")
 
     return ManagerOverview(
         week=week,
         projects=[ProjectOption(id=p["id"], code=p["code"], name=p["name"]) for p in projects],
         stats=ManagerStats(
             active_projects=len(projects),
-            on_track=len(projects) - at_risk,
+            on_track=on_track,
             at_risk=at_risk,
             pending_approvals=len(queue),
         ),
@@ -298,11 +302,12 @@ def admin_overview(conn: psycopg.Connection) -> AdminOverview:
     projects = repo.project_rows(conn)
     managers = repo.manager_coverage(conn)
     at_risk = sum(1 for p in projects if health(p) == "at_risk")
+    on_track = sum(1 for p in projects if health(p) == "on_track")
 
     return AdminOverview(
         stats=AdminStats(
             active_projects=len(projects),
-            on_track=len(projects) - at_risk,
+            on_track=on_track,
             at_risk=at_risk,
             portfolio_budget=_money(sum(p["budget"] for p in projects)),
             actual_cost=_money(sum(p["actual_cost"] for p in projects)),

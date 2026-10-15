@@ -18,7 +18,7 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | Seed: 8 accounts plus sample departments, projects, teams, tasks, hours and audit history | Done ([LOGIN.md](LOGIN.md)) |
 | App shell: sidebar, top bar, page header, role-based routes | Done |
 | Overview page for each role (read-only, real data) | Done; its action buttons come with later slices |
-| Projects page and API for all roles (list, detail, create, edit, archive) | Done ([BUILD_PLAN.md](BUILD_PLAN.md) slice 2) |
+| Projects page and API for all roles (list, detail, create, edit, archive; health and "No team" filters) | Done ([BUILD_PLAN.md](BUILD_PLAN.md) slice 2) |
 | Tasks and milestones: start/submit, review, plan tasks, add and approve milestones, notes, close project | Done (slice 3) |
 | People & access (admin): create accounts, edit, role change, archive and restore | Done (slice 4) |
 | My team (manager): take employees on from the employee list, release them, teams (searchable, filtered by project), members, attach teams to projects | Done (slice 4) |
@@ -75,8 +75,8 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 | PATCH | `/tasks/{id}` | employee: `{status: in_progress \| submitted}`, forward only; 409 if the milestone is locked or another milestone is active |
 | POST | `/tasks/{id}/complete`, `/reopen` | manager of the project |
 | GET | `/milestones/{id}` | anyone on the project: tasks (employee: own), notes, approval state |
-| POST | `/projects/{id}/milestones` | manager: next milestone in sequence |
-| POST | `/milestones/{id}/tasks` | manager: assignee must be on a team attached to the project |
+| POST | `/projects/{id}/milestones` | manager: next milestone in sequence; dates within the project's and not overlapping another milestone |
+| POST | `/milestones/{id}/tasks` | manager: assignee must be on a team attached to the project; due date within the milestone's dates |
 | POST | `/milestones/{id}/approve` | manager: 409 unless every task is completed |
 | POST | `/milestones/{id}/notes` | employee or manager on the project |
 | POST | `/projects/{id}/close` | manager: 409 unless every milestone is approved |
@@ -95,6 +95,8 @@ The build tracker for the remaining work is [BUILD_PLAN.md](BUILD_PLAN.md).
 ├── README.md              # This file
 ├── BUILD_PLAN.md          # Build tracker: slices, checklists, decisions
 ├── LOGIN.md               # Dev accounts and how login works
+├── MANUAL_TESTING.md      # Click-through checklist per role, plus a full cross-role flow
+├── DEMO.md                # Presentation script: one project from new accounts to close, then the admin's view
 ├── EMPLOYEE.md            # Employee role spec: flows, tables, pages, API, build checklist (§9)
 ├── MANAGER.md             # Manager role spec
 ├── ADMIN.md               # Admin role spec
@@ -178,10 +180,15 @@ Three roles, enforced in two places:
 ## Tests and checks
 
 ```sh
-cd backend/api && .venv/bin/python -m pytest   # 250 tests, needs PostgreSQL (see backend README)
+cd backend/api && .venv/bin/python -m pytest   # 252 tests, needs PostgreSQL (see backend README)
 cd frontend && npm run lint && npm run build
-cd frontend && npm run test:e2e                # Playwright, needs the dev stack running (see frontend/e2e/README.md)
+cd frontend && npm run test:e2e                # Playwright, needs the dev stack running
 ```
+
+Step-by-step guides: [backend/api/TESTING.md](backend/api/TESTING.md) for pytest and Postman,
+[frontend/TESTING.md](frontend/TESTING.md) for lint, build and Playwright.
+
+To check the app by hand, follow [MANUAL_TESTING.md](MANUAL_TESTING.md).
 
 ## Design references
 

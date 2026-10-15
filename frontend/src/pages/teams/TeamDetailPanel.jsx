@@ -3,7 +3,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
-import MailOutlined from '@mui/icons-material/MailOutlined';
 import { HEALTH, MILESTONE_STATUS } from '../../config/statuses';
 import { Meter } from '../../components/Meter';
 import { PersonCell } from '../../components/PersonCell';
@@ -26,12 +25,7 @@ export function TeamDetailPanel({ team, hasActive, onClose, onOpenProject }) {
       {team && (
         <>
           <Section title="Manager">
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-              <PersonCell name={team.manager_name} sub={team.manager_email} />
-              <Button size="small" startIcon={<MailOutlined />} href={`mailto:${team.manager_email}`}>
-                Contact
-              </Button>
-            </Box>
+            <PersonCell name={team.manager_name} sub={team.manager_email} />
           </Section>
 
           <Section title={team.projects.length === 1 ? 'Project' : 'Projects'} count={team.projects.length}>

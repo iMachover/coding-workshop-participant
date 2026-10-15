@@ -11,7 +11,6 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import ArrowForwardOutlined from '@mui/icons-material/ArrowForwardOutlined';
-import MailOutlined from '@mui/icons-material/MailOutlined';
 import { useAuth } from '../../context/useAuth';
 import { useApiGet } from '../../hooks/useApiGet';
 import { usePanelParams } from '../../hooks/usePanelParams';
@@ -217,10 +216,7 @@ function ManagerCard({ manager }) {
           <Typography color="text.secondary" sx={{ fontSize: 11, mt: 1.5, mb: 1.5 }}>
             One manager across your teams. Talk to {manager.name.split(' ')[0]} about workload or assignment changes.
           </Typography>
-          <Button size="small" startIcon={<MailOutlined />} href={`mailto:${manager.email}`}>
-            Contact manager
-          </Button>
-          <Button size="small" component={RouterLink} to="/projects" endIcon={<ArrowForwardOutlined />} sx={{ ml: 1 }}>
+          <Button size="small" component={RouterLink} to="/projects" endIcon={<ArrowForwardOutlined />}>
             My projects
           </Button>
         </Box>

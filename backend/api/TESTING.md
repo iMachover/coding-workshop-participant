@@ -42,7 +42,7 @@ POSTGRES_USER=$USER POSTGRES_PASS= .venv/bin/python -m pytest
 **Expected result**
 
 ```text
-250 passed
+252 passed
 ```
 
 If any test fails, the output shows which one and why.
@@ -58,7 +58,7 @@ Most tests run against the real test database.
 | `tests/test_roles.py` | 5 | Role checks, for example only an admin can list users. |
 | `tests/test_schema.py` | 9 | Database rules: an end date can't be before the start date, a project needs a manager, hours must be positive, deletes cascade or are blocked as intended. |
 | `tests/test_seed.py` | 8 | The sample data is consistent. Seeding again adds nothing, and audit entries point at records that exist. |
-| `tests/test_overview.py` | 36 | The three Overview pages: project health rules, cost = hours × rate, people over 40 hours flagged, and what each role can see. |
+| `tests/test_overview.py` | 38 | The three Overview pages: project health rules, cost = hours × rate, people over 40 hours flagged, and what each role can see. |
 | `tests/test_projects.py` | 25 | The Projects API: what each role can see, admin-only create, archive and restore, manager edit limits, validation, and audit entries. |
 | `tests/test_work.py` | 16 | Tasks and milestones: forward-only status, one active milestone, review, approval, notes, close project. |
 | `tests/test_people.py` | 28 | People and teams: paginated people list, create with generated username (employees start unassigned), validation, role-change and archive blockers, last-admin rule, manager's direct reports, taking an unassigned employee on and releasing them (directly or through a team), teams (create, rename, members, attach and detach), employee My teams. Cleans up what it creates. |
@@ -80,6 +80,7 @@ Most tests run against the real test database.
 
 1. Install the Postman app.
 2. Import `postman/project-tracker-api.postman_collection.json`.
+3. Import `postman/local-uvicorn.postman_environment.json`. It sets `baseUrl` to `http://localhost:8000`.
 
 **Start the API and seed the database**
 
@@ -98,8 +99,9 @@ Run the `export` line and both commands in the same terminal window. The API wil
 
 **Set the base URL**
 
-1. Open the collection variables.
-2. Set `baseUrl` to `http://localhost:8000`. The default points at LocalStack on port 3001.
+Pick **Project tracker - local uvicorn** in the environment dropdown at the top right. Without it, the
+collection's own `baseUrl` points at LocalStack on port 3001. To skip the environment, open the
+collection variables and set `baseUrl` to `http://localhost:8000` instead.
 
 **Run**
 
@@ -109,12 +111,41 @@ Run the `export` line and both commands in the same terminal window. The API wil
 
 **Expected result**
 
-187 requests. Every test passes.
+187 requests. Every test passes. The Runner shows **Failed: 0**.
+
+Many requests get a 400, 401 or 403 back. That is expected. Those requests check that the API refuses what it should refuse, and their test passes when the error comes back:
+
+| Code | Meaning | Example request |
+| ---- | ------- | --------------- |
+| 400 | Bad data is rejected | Create project - end before start |
+| 401 | No login, or a wrong password | Login - wrong password |
+| 403 | Logged in, but this role is not allowed | Admin overview - employee token |
+
+Pass or fail comes from the test results, not the status code. A red 403 next to a green PASS is a pass.
 
 The collection creates and archives a project, creates a person (archived and restored) and a
 team, logs, corrects and removes a time entry, and archives and restores a second project while
 reading the audit log and the archives, and creates and renames a department ("Postman dept <timestamp>" with a
 prefix derived from the clock, so reruns do not collide). If a second run gives different results, reset the local database and run again.
+
+**Reset the local database**
+
+A run that fails part way leaves its projects and teams behind, and later runs then fail too. Stop the API with Ctrl+C, then:
+
+```sh
+# Workshop VM
+PGPASSWORD=postgres123 dropdb -h localhost -U postgres project_tracker
+PGPASSWORD=postgres123 createdb -h localhost -U postgres project_tracker
+
+# Mac with Homebrew Postgres
+dropdb project_tracker
+createdb project_tracker
+
+.venv/bin/python -m app.db.bootstrap
+.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+This deletes everything in the local database, including anything you added by hand in the app, and loads the sample data again.
 
 **Test logins**
 

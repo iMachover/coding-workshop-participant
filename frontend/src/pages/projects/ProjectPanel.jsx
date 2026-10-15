@@ -293,12 +293,15 @@ function MilestoneForm({ project, onSaved, onCancel }) {
       <TextField label="Milestone name" value={values.name} onChange={set('name')} required error={!!errors.name} helperText={errors.name} />
       <TextField label="Description" value={values.description} onChange={set('description')} multiline minRows={2} />
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
-        <TextField label="Start date" type="date" value={values.start_date} onChange={set('start_date')} slotProps={{ inputLabel: { shrink: true } }} error={!!errors.start_date} helperText={errors.start_date} />
-        <TextField label="Predicted end date" type="date" value={values.projected_end_date} onChange={set('projected_end_date')} slotProps={{ inputLabel: { shrink: true } }} error={!!errors.projected_end_date} helperText={errors.projected_end_date} />
+        <TextField label="Start date" type="date" value={values.start_date} onChange={set('start_date')} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: project.start_date, max: values.projected_end_date || project.end_date } }} error={!!errors.start_date} helperText={errors.start_date} />
+        <TextField label="Predicted end date" type="date" value={values.projected_end_date} onChange={set('projected_end_date')} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: values.start_date || project.start_date, max: project.end_date } }} error={!!errors.projected_end_date} helperText={errors.projected_end_date} />
       </Box>
       <TextField label="Planned hours" type="number" value={values.predicted_hours} onChange={set('predicted_hours')} slotProps={{ htmlInput: { min: 0, step: 1 } }} error={!!errors.predicted_hours} helperText={errors.predicted_hours} />
       <Typography color="text.secondary" sx={{ fontSize: 11 }}>
         {last ? `Depends on ${String(last.sequence).padStart(2, '0')} · ${last.name}. It stays locked until that one is approved.` : 'This becomes the first milestone of the project.'}
+      </Typography>
+      <Typography color="text.secondary" sx={{ fontSize: 11 }}>
+        Dates must fall between {formatDate(project.start_date)} and {formatDate(project.end_date)} and must not overlap another milestone.
       </Typography>
       {errors.form && (
         <Typography variant="caption" color="error">
@@ -320,6 +323,8 @@ function MilestoneForm({ project, onSaved, onCancel }) {
 MilestoneForm.propTypes = {
   project: PropTypes.shape({
     id: PropTypes.number.isRequired,
+    start_date: PropTypes.string.isRequired,
+    end_date: PropTypes.string.isRequired,
     milestones: PropTypes.arrayOf(PropTypes.shape({ sequence: PropTypes.number, name: PropTypes.string })).isRequired,
   }).isRequired,
   onSaved: PropTypes.func.isRequired,

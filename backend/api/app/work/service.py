@@ -9,6 +9,7 @@ in it is completed, and close a project once every milestone is completed. Every
 project reads and adds milestone notes. Every write records an audit row.
 """
 
+from datetime import date
 from typing import Any
 
 import psycopg
@@ -200,8 +201,20 @@ def review_task(conn: psycopg.Connection, user: dict[str, Any], task_id: int, de
     return get_task(conn, user, task_id)
 
 
+def _day(value: date) -> str:
+    return f"{value.day} {value:%b %Y}"
+
+
+def _due_window(ms: dict[str, Any]) -> tuple[date, date]:
+    """Days a task in this milestone may be due: the milestone's dates, or the project's where the milestone has none."""
+    return ms["start_date"] or ms["project_start_date"], ms["projected_end_date"] or ms["project_end_date"]
+
+
 def create_task(conn: psycopg.Connection, user: dict[str, Any], milestone_id: int, data: TaskCreate) -> TaskDetail:
-    """Manager plans a task in one of their milestones for someone on the project."""
+    """Manager plans a task in one of their milestones for someone on the project.
+
+    Its due date must fall within the milestone's dates (see `_due_window`).
+    """
     ms = repo.milestone(conn, milestone_id)
     if ms is None:
         raise _not_found("Milestone")
@@ -211,6 +224,9 @@ def create_task(conn: psycopg.Connection, user: dict[str, Any], milestone_id: in
     people = {p["id"] for p in repo.assignable_people(conn, ms["project_id"])}
     if data.assigned_to not in people:
         raise AppError(400, "VALIDATION_ERROR", "Request validation failed", {"assigned_to": "Choose someone on a team attached to this project"})
+    due_from, due_until = _due_window(ms)
+    if data.due_date and not due_from <= data.due_date <= due_until:
+        raise AppError(400, "VALIDATION_ERROR", "Request validation failed", {"due_date": f"Must be within the milestone dates ({_day(due_from)} to {_day(due_until)})"})
     created = repo.insert_task(conn, milestone_id, data.model_dump())
     audit.record(
         conn, actor_id=user["id"], action="created", entity_type="task", entity_id=created["id"], entity_code=created["code"],
@@ -248,6 +264,7 @@ def get_milestone(conn: psycopg.Connection, user: dict[str, Any], milestone_id: 
         tasks.append(_task_detail(conn, user, row, active_by_user[row["assignee_id"]]))
     manages = user["role"] == "manager" and ms["manager_id"] == user["id"] and ms["project_status"] == "active"
     blocker = _approve_blocker(ms)
+    due_from, due_until = _due_window(ms)
     return MilestoneDetail(
         id=ms["id"],
         project_id=ms["project_id"],
@@ -261,6 +278,8 @@ def get_milestone(conn: psycopg.Connection, user: dict[str, Any], milestone_id: 
         locked=ms["locked"],
         start_date=ms["start_date"],
         projected_end_date=ms["projected_end_date"],
+        due_from=due_from,
+        due_until=due_until,
         completed_at=ms["completed_at"],
         predicted_hours=ms["predicted_hours"],
         planned_hours=sum(t.planned_hours for t in tasks),
@@ -276,14 +295,40 @@ def get_milestone(conn: psycopg.Connection, user: dict[str, Any], milestone_id: 
     )
 
 
+def _check_milestone_dates(conn: psycopg.Connection, project: dict[str, Any], data: MilestoneCreate) -> None:
+    """Dates sit inside the project's dates and do not overlap another milestone's (days are inclusive)."""
+    start, end = data.start_date, data.projected_end_date
+    if start and end and start > end:
+        raise AppError(400, "VALIDATION_ERROR", "Request validation failed", {"projected_end_date": "End date must be on or after the start date"})
+    fields: dict[str, str] = {}
+    window = f"{_day(project['start_date'])} to {_day(project['end_date'])}"
+    for field, value in (("start_date", start), ("projected_end_date", end)):
+        if value and not project["start_date"] <= value <= project["end_date"]:
+            fields[field] = f"Must be within the project dates ({window})"
+    if fields:
+        raise AppError(400, "VALIDATION_ERROR", "Request validation failed", fields)
+    if not (start or end):
+        return
+    lo, hi = start or end, end or start
+    for other in repo.milestone_dates(conn, project["id"]):
+        o_lo = other["start_date"] or other["projected_end_date"]
+        o_hi = other["projected_end_date"] or other["start_date"]
+        if lo <= o_hi and o_lo <= hi:
+            span = _day(o_lo) if o_lo == o_hi else f"{_day(o_lo)} to {_day(o_hi)}"
+            message = f"Overlaps milestone {other['sequence']:02d} · {other['name']} ({span})"
+            raise AppError(400, "VALIDATION_ERROR", "Request validation failed", {"start_date" if start else "projected_end_date": message})
+
+
 def create_milestone(conn: psycopg.Connection, user: dict[str, Any], project_id: int, data: MilestoneCreate) -> MilestoneDetail:
-    """Manager appends a milestone to their project; it depends on the one before it."""
+    """Manager appends a milestone to their project; it depends on the one before it.
+
+    Its dates must fall within the project's dates and must not overlap another milestone.
+    """
     project = repo.project_brief(conn, project_id)
     if project is None:
         raise _not_found("Project")
     _require_manager_of(user, {**project, "project_status": project["status"]})
-    if data.start_date and data.projected_end_date and data.start_date > data.projected_end_date:
-        raise AppError(400, "VALIDATION_ERROR", "Request validation failed", {"projected_end_date": "End date must be on or after the start date"})
+    _check_milestone_dates(conn, project, data)
     created = repo.insert_milestone(conn, project_id, data.model_dump())
     audit.record(
         conn, actor_id=user["id"], action="created", entity_type="milestone", entity_id=created["id"], entity_code=project["code"],

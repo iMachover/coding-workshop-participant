@@ -1,5 +1,7 @@
 """Task and milestone workflow: forward-only status, one active milestone, review, approval, notes."""
 
+from datetime import timedelta
+
 import pytest
 
 from tests.conftest import SEED_ADMIN, SEED_EMPLOYEE, SEED_MANAGER, login
@@ -24,6 +26,13 @@ def _milestone_id(conn, name):
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM milestones WHERE name = %s", (name,))
         return cur.fetchone()["id"]
+
+
+def _milestone_dates(conn, milestone_id):
+    with conn.cursor() as cur:
+        cur.execute("SELECT start_date, projected_end_date FROM milestones WHERE id = %s", (milestone_id,))
+        row = cur.fetchone()
+        return row["start_date"], row["projected_end_date"]
 
 
 def _project_id(conn, code):
@@ -152,15 +161,21 @@ def test_one_active_milestone_across_projects(client, conn):
 def test_manager_creates_task_for_someone_on_the_project(client, conn):
     milestone = _milestone_id(conn, "Workload migration")
     headers = _auth(client, SEED_MANAGER)
+    ms_start, ms_end = _milestone_dates(conn, milestone)
     response = client.post(
         f"/milestones/{milestone}/tasks",
-        json={"title": "Verify firewall rules", "description": "Check every migrated service.", "predicted_hours": 6, "due_date": "2026-11-20", "assigned_to": _user_id(conn, "emp001")},
+        json={"title": "Verify firewall rules", "description": "Check every migrated service.", "predicted_hours": 6, "due_date": ms_end.isoformat(), "assigned_to": _user_id(conn, "emp001")},
         headers=headers,
     )
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["assignee_name"] == "Sam Rivera" and body["planned_cost"] == 6 * 60
     assert _audit(conn, "task", body["id"])[0]["action"] == "created"
+
+    # The due date must fall within the milestone's dates.
+    for due in (ms_start - timedelta(days=1), ms_end + timedelta(days=1)):
+        early_or_late = client.post(f"/milestones/{milestone}/tasks", json={"title": "x", "due_date": due.isoformat(), "assigned_to": _user_id(conn, "emp001")}, headers=headers)
+        assert early_or_late.status_code == 400 and "milestone dates" in early_or_late.json()["error"]["fields"]["due_date"]
 
     # Assignee must be on a team attached to this project (emp002 is on Server Ops; a stranger is not).
     with conn.cursor() as cur:
@@ -224,15 +239,23 @@ def test_milestone_detail_is_scoped_by_role(client, conn):
 def test_manager_adds_dependent_milestone(client, conn):
     project = _project_id(conn, "INF-024")
     headers = _auth(client, SEED_MANAGER)
-    response = client.post(
-        f"/projects/{project}/milestones",
-        json={"name": "Post-migration review", "projected_end_date": "2027-02-15", "predicted_hours": 20},
-        headers=headers,
-    )
+    response = client.post(f"/projects/{project}/milestones", json={"name": "Post-migration review", "predicted_hours": 20}, headers=headers)
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["sequence"] == 4 and body["locked"] is True and body["status"] == "not_started"
     assert _audit(conn, "milestone", body["id"])[0]["action"] == "created"
+
+    # Dates stay inside the project's dates and clear of other milestones (seeded ones fill INF-024).
+    with conn.cursor() as cur:
+        cur.execute("SELECT start_date, end_date FROM projects WHERE id = %s", (project,))
+        p_start, p_end = cur.fetchone().values()
+    outside = client.post(f"/projects/{project}/milestones", json={"name": "x", "start_date": (p_start - timedelta(days=1)).isoformat()}, headers=headers)
+    assert outside.status_code == 400 and "project dates" in outside.json()["error"]["fields"]["start_date"]
+    outside = client.post(f"/projects/{project}/milestones", json={"name": "x", "projected_end_date": (p_end + timedelta(days=1)).isoformat()}, headers=headers)
+    assert outside.status_code == 400 and "project dates" in outside.json()["error"]["fields"]["projected_end_date"]
+    ms_start, ms_end = _milestone_dates(conn, _milestone_id(conn, "Workload migration"))
+    overlap = client.post(f"/projects/{project}/milestones", json={"name": "x", "start_date": ms_end.isoformat(), "projected_end_date": ms_end.isoformat()}, headers=headers)
+    assert overlap.status_code == 400 and "Overlaps milestone 02" in overlap.json()["error"]["fields"]["start_date"]
 
     bad = client.post(f"/projects/{project}/milestones", json={"name": "x", "start_date": "2027-03-01", "projected_end_date": "2027-02-01"}, headers=headers)
     assert bad.status_code == 400 and "projected_end_date" in bad.json()["error"]["fields"]

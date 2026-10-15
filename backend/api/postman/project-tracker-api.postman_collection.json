@@ -59,6 +59,10 @@
       "value": ""
     },
     {
+      "key": "taskDueDate",
+      "value": ""
+    },
+    {
       "key": "employeeId",
       "value": ""
     },
@@ -1557,7 +1561,8 @@
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
                   "pm.test('approval blocked', () => pm.expect(pm.response.json().can_approve).to.be.false);",
-                  "pm.collectionVariables.set('assigneeId', pm.response.json().assignable[0].id);"
+                  "pm.collectionVariables.set('assigneeId', pm.response.json().assignable[0].id);",
+                  "pm.collectionVariables.set('taskDueDate', pm.response.json().due_until);"
                 ]
               }
             }
@@ -1629,7 +1634,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Postman task\",\n  \"predicted_hours\": 2,\n  \"due_date\": \"2026-12-01\",\n  \"assigned_to\": \"{{assigneeId}}\"\n}"
+              "raw": "{\n  \"title\": \"Postman task\",\n  \"predicted_hours\": 2,\n  \"due_date\": \"{{taskDueDate}}\",\n  \"assigned_to\": \"{{assigneeId}}\"\n}"
             }
           },
           "event": [
@@ -2474,10 +2479,10 @@
           ]
         },
         {
-          "name": "Team options - every employee with their manager",
+          "name": "People search - manager sees the unassigned employee",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/teams/options",
+            "url": "{{baseUrl}}/employees/search",
             "header": [
               {
                 "key": "Authorization",
@@ -2492,7 +2497,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('lists the unassigned employee', () => pm.expect(pm.response.json().people.map(p => p.id)).to.include(Number(pm.collectionVariables.get('unassignedId'))));"
+                  "pm.test('lists the unassigned employee', () => pm.expect(pm.response.json().items.map(p => p.id)).to.include(Number(pm.collectionVariables.get('unassignedId'))));"
                 ]
               }
             }
@@ -4057,7 +4062,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('matches the code', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(2); b.items.forEach(e => pm.expect(e.entity_code).to.eql('INF-024')); });"
+                  "pm.test('matches the code', () => { const b = pm.response.json(); pm.expect(b.total).to.be.at.least(2); b.items.forEach(e => pm.expect(e.entity_code === 'INF-024' || e.summary.includes('INF-024')).to.eql(true)); });"
                 ]
               }
             }

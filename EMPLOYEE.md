@@ -44,7 +44,8 @@ Slices 1–4 ship first. 5 and 6 last.
 - Visibility: the employee sees ONLY their own hours and cost. On My teams they also see
   teammates' progress % (never teammates' cost). Project budget is never shown.
 - Project health (derived): **At risk** if the project's active milestone is past its projected
-  end date or the project's logged hours exceed its predicted hours; otherwise **On track**.
+  end date or the project's logged hours exceed its predicted hours; otherwise **Pending** while
+  no team is assigned, and **On track** once one is.
 - Every employee write (status change, time entry, note, profile edit) is written to the audit log.
 
 ## 3. Core actions

@@ -25,6 +25,7 @@ export const TASK_STATUS = {
 export const HEALTH = {
   on_track: { label: 'On track', tone: 'success' },
   at_risk: { label: 'At risk', tone: 'warning' },
+  pending: { label: 'Pending', tone: 'muted' },
 };
 
 export const MILESTONE_STATUS = {

@@ -110,6 +110,8 @@ class MilestoneDetail(BaseModel):
     locked: bool
     start_date: date | None = None
     projected_end_date: date | None = None
+    due_from: date
+    due_until: date
     completed_at: datetime | None = None
     predicted_hours: float
     planned_hours: float
