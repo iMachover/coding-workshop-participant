@@ -6,6 +6,25 @@ resource "aws_cloudfront_origin_access_control" "this" {
   signing_protocol                  = "sigv4"
 }
 
+# Rewrites extensionless paths to /index.html on the S3 behavior only, so /api/* error
+# responses (403, 404) reach the frontend unchanged
+resource "aws_cloudfront_function" "spa_rewrite" {
+  count   = data.aws_caller_identity.this.id != "000000000000" ? 1 : 0
+  name    = format("%s-spa-rewrite-%s", var.aws_project, local.app_id)
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var lastSegment = request.uri.split('/').pop();
+      if (lastSegment.indexOf('.') === -1) {
+        request.uri = '/index.html';
+      }
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "this" {
   count               = data.aws_caller_identity.this.id != "000000000000" ? 1 : 0
   enabled             = true
@@ -37,13 +56,6 @@ resource "aws_cloudfront_distribution" "this" {
         origin_ssl_protocols   = ["TLSv1.2"]
       }
     }
-  }
-
-  custom_error_response {
-    error_code            = 404
-    error_caching_min_ttl = 300
-    response_code         = 200
-    response_page_path    = "/index.html"
   }
 
   # logging_config {
@@ -96,6 +108,12 @@ resource "aws_cloudfront_distribution" "this" {
 
     target_origin_id       = local.origin_id
     viewer_protocol_policy = "redirect-to-https"
+
+    # Serve index.html for client-side routes (e.g. /people) so a page refresh loads the SPA
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = element(aws_cloudfront_function.spa_rewrite.*.arn, count.index)
+    }
 
     forwarded_values {
       query_string = false
