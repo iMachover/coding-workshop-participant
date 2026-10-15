@@ -13,6 +13,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import AddOutlined from '@mui/icons-material/AddOutlined';
+import { useRefresh } from '../../context/useRefresh';
 import { useApiGet } from '../../hooks/useApiGet';
 import { usePanelParams } from '../../hooks/usePanelParams';
 import { ROLE } from '../../config/statuses';
@@ -26,7 +27,6 @@ import { SidePanel } from '../../components/SidePanel';
 import { StatusChip } from '../../components/StatusChip';
 import { SearchBar } from '../../components/SearchBar';
 import { PageHeader } from '../../layout/PageHeader';
-import { fetchUserOptions } from '../../services/peopleService';
 import { monoFont } from '../../theme';
 import { formatHours } from '../../utils/format';
 import { CredentialsDialog } from './CredentialsDialog';
@@ -55,6 +55,7 @@ const STATE_FILTERS = [
  */
 export function PeoplePage() {
   const { open } = usePanelParams();
+  const { bump } = useRefresh();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
@@ -63,13 +64,11 @@ export function PeoplePage() {
   const [state, setState] = useState('active');
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(25);
-  const [options, setOptions] = useState(null);
   const [credentials, setCredentials] = useState(null);
   const creating = params.get('create') === '1';
 
-  useEffect(() => {
-    fetchUserOptions().then(setOptions, () => setOptions(null));
-  }, []);
+  // Through useApiGet so a save's bump() reloads it: a new manager shows in "Reports to" at once.
+  const { data: options } = useApiGet('/users/options');
 
   // Search the server after a short pause, so typing does not fire a request per keystroke.
   useEffect(() => {
@@ -177,7 +176,7 @@ export function PeoplePage() {
           options={options}
           onSaved={(saved, password) => {
             setCreating(false);
-            retry();
+            bump();
             setCredentials({ name: saved.name, username: saved.username, password });
           }}
           onCancel={() => setCreating(false)}

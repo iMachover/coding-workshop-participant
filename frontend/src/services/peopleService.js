@@ -14,9 +14,6 @@ export const archiveUser = (id) => request(`/users/${id}/archive`, { method: 'PO
 /** @param {number} id */
 export const restoreUser = (id) => request(`/users/${id}/restore`, { method: 'POST' });
 
-/** Managers and departments for the admin's person form. */
-export const fetchUserOptions = () => request('/users/options');
-
 /** @param {number} id @param {object} data first_name, last_name, email of a direct report (manager) */
 export const updateEmployee = (id, data) => request(`/employees/${id}`, { method: 'PATCH', body: data });
 

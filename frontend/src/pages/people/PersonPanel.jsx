@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -19,7 +19,7 @@ import { Meter } from '../../components/Meter';
 import { PersonCell } from '../../components/PersonCell';
 import { SidePanel } from '../../components/SidePanel';
 import { StatusChip } from '../../components/StatusChip';
-import { archiveUser, fetchUserOptions, releaseEmployee, restoreUser } from '../../services/peopleService';
+import { archiveUser, releaseEmployee, restoreUser } from '../../services/peopleService';
 import { monoFont } from '../../theme';
 import { formatDay, formatHours, formatMoney } from '../../utils/format';
 import { PersonForm } from './PersonForm';
@@ -41,14 +41,11 @@ export function PersonPanel({ personId, onClose, onOpenProject }) {
   const isAdmin = user.role === 'admin';
   const [mode, setMode] = useState('view'); // view | edit | archive | release
   const [busy, setBusy] = useState(false);
-  const [options, setOptions] = useState(null);
   const path = personId ? (isAdmin ? `/users/${personId}` : `/employees/${personId}`) : null;
   const { data, error, loading, retry } = useApiGet(path);
   const person = loading ? null : data;
 
-  useEffect(() => {
-    if (isAdmin && personId) fetchUserOptions().then(setOptions, () => setOptions(null));
-  }, [isAdmin, personId]);
+  const { data: options } = useApiGet(isAdmin && personId ? '/users/options' : null);
 
   function close() {
     setMode('view');
